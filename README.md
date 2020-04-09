@@ -5,7 +5,9 @@ Reversing Tool designed for Unreal Engine4 to debugg objects JIT
 This project allows you to inspect all UObjects under GEngine World's Actors array.
 It should work for many UE4 games without much effort, for other games you can always modify it.
 
+
 Dependencies
+
 https://github.com/websockets/ws - For Websockets
 
 https://github.com/ThePhD/sol2 - For Lua
