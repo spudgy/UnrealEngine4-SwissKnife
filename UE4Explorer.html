@@ -1,0 +1,368 @@
+<style>
+    #demo,#demo2 {
+        float: left;
+        padding: 10px;
+    }    
+body {
+  font-family: Helvetica Neue, Arial, sans-serif;
+  font-size: 14px;
+  color: #444;
+}
+
+table {
+  border: 2px solid #42b983;
+  border-radius: 3px;
+  background-color: #fff;
+}
+
+th {
+  background-color: #42b983;
+  color: rgba(255,255,255,0.66);
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+td {
+}
+
+th, td {
+  padding: 4px 8px;
+}
+
+th.active {
+  color: #fff;
+}
+
+th.active .arrow {
+  opacity: 1;
+}
+
+.arrow {
+  display: inline-block;
+  vertical-align: middle;
+  width: 0;
+  height: 0;
+  margin-left: 5px;
+  opacity: 0.66;
+}
+
+.arrow.asc {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 4px solid #fff;
+}
+
+.arrow.dsc {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid #fff;
+}
+    .tr-even {
+        
+    }
+    .tr-odd {
+    background-color: #f7f7f7;
+    }
+</style>
+<textarea id="script_area" name="script_area"
+          rows="8" cols="120">
+    WSLog(string.format('%X good',GetEngine()))</textarea>
+
+<textarea id="log_area" name="log_area"
+          rows="8" cols="120" disabled>Log..&#13;&#10;</textarea>
+<br>
+<button onclick="SendScript()">Send</button>
+<span class="state">Hello Script Component!</span>
+<br><br>
+<!-- component template -->
+<script type="text/x-template" id="grid-template">
+  <table :key="componentKey" >
+    <thead>
+      <tr>
+        <th v-for="key in columns"
+          @click="sortBy(key)"
+          :class="{ active: sortKey == key }">
+          {{ key | capitalize }}
+          <span class="arrow" :class="sortOrders[key] > 0 ? 'asc' : 'dsc'">
+          </span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="(entry,index) in filteredHeroes" :class="index%2?'tr-even':'tr-odd'" @dblclick="greet(entry)">
+      
+        <td v-for="key in columns">
+        {{translate(entry,key)}}
+        <div v-if="entry.edit ==true && key == 'val'">
+      <input ref="uip" v-on:keyup.enter="$event.target.blur()" @blur="handleBlur(entry,$event)" :value="entry.val" />
+    </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</script>
+
+<!-- demo root element -->
+<div id="demo">
+  <form id="search">
+    Search <input name="query" v-model="searchQuery">
+  </form>
+  <demo-grid
+    :heroes="gridData"
+    :columns="gridColumns"
+    :filter-key="searchQuery">
+  </demo-grid>
+</div>
+
+<div id="demo2">
+  <form id="search">
+    Search <input name="query" v-model="searchQuery">
+  </form>
+      
+    <div><input id="ptr"/ :value="hex(goPtr)"> <button onclick="DoX()">Scan Object</button> | <input type="checkbox" id="refreshCb" @click="cbRefresh($event)"/> <label for="refreshCb">Auto Refresh every </label><input id="refreshMs" value="1000"/>ms. | <input type="checkbox" id="refreshTimerCb"/> <label for="refreshTimerCb">Keep refresh prop for </label><input id="refreshKeepMs" value="5000"/>ms.</div>
+  <demo-grid ref="diffProps"
+    :heroes="mdiffData"
+    :columns="gridColumns"
+    :filter-key="searchQuery">
+  </demo-grid>
+  <demo-grid ref="fieldProps"
+    :heroes="gridData"
+    :columns="gridColumns"
+    :filter-key="searchQuery">
+  </demo-grid>
+</div>
+<script
+  src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+  integrity="sha256-pasqAKBDmFT4eHoN2ndd6lN370kFiGUFyTiUHWhU7k8="
+  crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script>
+// register the grid component
+Vue.component('demo-grid', {
+  template: '#grid-template',
+  props: {
+    heroes: Array,
+    columns: Array,
+    filterKey: String
+  },
+  data: function () {
+    var sortOrders = {}
+    this.columns.forEach(function (key) {
+      sortOrders[key] = 1
+    })
+    return {
+      componentKey: 0,
+      sortKey: '',
+      sortOrders: sortOrders
+    }
+  },
+  computed: {
+    filteredHeroes: function () {
+      var sortKey = this.sortKey
+      var filterKey = this.filterKey && this.filterKey.toLowerCase()
+      var order = this.sortOrders[sortKey] || 1
+      var heroes = this.heroes
+      if (filterKey) {
+        heroes = heroes.filter(function (row) {
+          return Object.keys(row).some(function (key) {
+            return String(row[key]).toLowerCase().indexOf(filterKey) > -1
+          })
+        })
+      }
+      if (sortKey) {
+        heroes = heroes.slice().sort(function (a, b) {
+          a = a[sortKey]
+          b = b[sortKey]
+          return (a === b ? 0 : a > b ? 1 : -1) * order
+        })
+      }
+      return heroes
+    }
+  },
+  filters: {
+    capitalize: function (str) {
+      return str.charAt(0).toUpperCase() + str.slice(1)
+    }
+  },
+  methods: {
+    forceRerender() {
+      this.componentKey += 1;  
+    },handleBlur(entry,event) {
+        var val = event.target.value;
+        var ptr = parseInt(this.goPtr)+entry.offset;
+        
+        var fnc = '';
+        if(entry.type == 'FloatProperty') fnc = 'WriteFloat';
+        else if(entry.type == 'StrProperty') fnc = 'WriteUEStr';
+        else if(entry.type == 'IntProperty') fnc = 'WriteInt';
+        else if(entry.type == 'BoolProperty') fnc = 'WriteByte';
+        else if(entry.type == 'ByteProperty') {
+            val = JSON.parse(val);//trick to get 1 or 0
+            fnc = 'WriteByte';
+        }
+        
+        var str = fnc+'(0x'+ptr.toString(16)+','+val+')';
+        console.log(str);
+        connection.send('do_script '+str);
+        entry.edit = false;
+        entry.val = val;
+              this.forceRerender();
+    },
+      greet: function (entry) {
+          if(entry.addr) {
+              //document.demo2.goPtr = entry.addr;
+                connection.send('get_info '+entry.addr)
+              console.log('get info..');
+              
+          } else if(entry.type == 'ObjectProperty' && entry.lParam > 0) {
+              //this.$parent.goPtr = entry.lParam;
+                connection.send('get_info '+entry.lParam) 
+              //..
+          } else if(entry.type == 'FloatProperty' || entry.type == 'StrProperty' || entry.type == 'IntProperty' ||entry.type == 'BoolProperty' || entry.type == 'ByteProperty' ) {
+              entry.edit = true;
+              this.forceRerender();
+              this.$nextTick(() => {
+                  this.$refs.uip[0].focus();
+      });
+             // this.$refs.updateInput.$focus();
+              //focus input..
+                    }
+         // console.log(entry);
+      },
+    translate: function (entry,key) {
+        var ret = entry[key];
+        if(entry.edit === true && key == 'val') return '';
+        
+        if(key == 'addr' || key == 'offset') return ret.toString(16).toUpperCase();
+        if(ret.length>40) return ret.slice(0,40)+'...';
+        return ret;
+    },
+    sortBy: function (key) {
+      this.sortKey = key
+      this.sortOrders[key] = this.sortOrders[key] * -1
+    }
+  }
+})
+
+// bootstrap the demo
+document.demo = new Vue({
+  el: '#demo',
+  data: {
+    searchQuery: '',
+    gridColumns: ['addr', 'name'],
+    gridData: [
+    ]
+  }
+})
+
+    function doRefresh() {
+        var toTime = $('#refreshMs').val(); //time out time
+        if(toTime <= 25) toTime = 25; //min
+        console.log('refresh.. '+performance.now());
+        if(document.demo2.goPtr > 0) //check if valid
+            connection.send('get_info '+document.demo2.goPtr)
+        if($('#refreshCb').is(':checked'))
+            document.refreshTimeout = setTimeout(doRefresh,toTime);
+    }
+// bootstrap the demo
+document.demo2 = new Vue({
+  el: '#demo2',
+  data: {
+      goPtr: 0,
+    searchQuery: '',
+    gridColumns: ['offset', 'name','type','val'],
+    gridData: [
+    ],
+    //diffData: []
+  },
+    computed: {
+        mdiffData: function() {
+            var diffData = [];
+            $.each(this.gridData,function(key,val) {
+                var keepTime = $('#refreshKeepMs').val();
+               if(val.diff || ($('#refreshTimerCb').is(':checked') && val.diffTimer >= performance.now()-keepTime)) diffData.push(val); 
+            });
+            return diffData;
+        }
+    },
+  methods: {
+      hex: function(ptr) {
+          return '0x'+ptr.toString(16).toUpperCase();
+      },
+      cbRefresh: function(event) {
+          if(event.target.checked)
+            doRefresh();//send refresh event..
+          else
+              clearTimeout(document.refreshTimeout);
+      },
+  }
+})
+</script>
+
+<script>
+    function SendScript() {
+        connection.send('do_script '+$('#script_area').val());
+    }
+    function DoX() {
+  connection.send('get_info '+parseInt($('#ptr').val(),16)) 
+    }
+    function SetupWS() {
+const url = 'ws://localhost:1357/echo'
+connection = new WebSocket(url)
+document.ws = connection;
+connection.onopen = () => {
+    $('.state').text('socket connected').css('color','green');
+    $('#log_area').text('Log..\n');
+    if(!document.gotList) {
+        connection.send('get_list') 
+        document.gotList = true;
+    }
+}
+
+connection.onclose = event=>{
+    setTimeout(function() { SetupWS();  },4000);
+    $('.state').text('Connection closed').css('color','red');
+}
+connection.onerror = (error) => {
+    $('.state').text('socket error..');
+    $('.wsState').text('Bad Connection.').css('color','red');
+    console.log(error);
+  console.log(`WebSocket error: ${error}`)
+}
+
+connection.onmessage = (e) => {
+    console.log(e);
+    var j = JSON.parse(e.data);
+    if(j.type == 'log') {
+        var oneDiv = $("#log_area");
+        $('#log_area').append(j.log+'\n');
+        bottom = oneDiv.prop('scrollHeight') - oneDiv.height()
+        console.log(j.log);
+    } else if(j.type == 'list') {
+        document.demo.gridData = j.data;
+    } else if(j.type == 'info') {
+        //parse info and make an updated props list
+        if(document.demo2.goPtr == j.data.ptr) {
+            var oldInfo = document.demo2.gridData;
+            for(var i = 0; i < j.data.info.length;i++) {
+                j.data.info[i].diff = j.data.info[i].val != oldInfo[i].val;
+                if(j.data.info[i].diff) {
+                    j.data.info[i].diffTimer = performance.now();
+                } else {
+                    j.data.info[i].diffTimer = oldInfo[i].diffTimer;
+                }
+            }
+        }
+        document.demo2.goPtr = j.data.ptr;
+        document.demo2.gridData = j.data.info;
+        //..
+    }
+    
+    return;
+}
+    }
+    SetupWS();
+</script>
