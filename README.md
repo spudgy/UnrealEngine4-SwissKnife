@@ -1,4 +1,4 @@
-![Screen1](https://i.imgur.com/v6K9PNz.png)
+![Logo](https://i.imgur.com/v6K9PNz.png)
 # UnrealEngine4-SwissKnife
 Reversing Tool designed for Unreal Engine4 to debugg objects JIT
 
@@ -11,6 +11,10 @@ The interface is in the html file, this should allow easy modification to anyone
 
 It also has script support to allow for easing modifications and information sharing.
 
+# Images
+
+![Screen0](https://i.imgur.com/NiqIPqh.png)
+![Screen1](https://i.imgur.com/71bz7CK.png)
 
 # Dependencies
 
