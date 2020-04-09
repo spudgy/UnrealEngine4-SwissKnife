@@ -6,7 +6,9 @@ This project allows you to inspect all UObjects under GEngine World's Actors arr
 It should work for many UE4 games without much effort, for other games you can always modify it.
 
 The tool works as a websocket listening to request and streaming information about the objects and fields.
+
 The interface is in the html file, this should allow easy modification to anyone needs.
+
 It also has script support to allow for easing modifications and information sharing.
 
 
