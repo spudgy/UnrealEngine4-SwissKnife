@@ -20,4 +20,6 @@ It also has script support to allow for easing modifications and information sha
 
 https://github.com/websockets/ws - For Websockets
 
+https://github.com/nlohmann/json - For JSON
+
 https://github.com/ThePhD/sol2 - For Lua
