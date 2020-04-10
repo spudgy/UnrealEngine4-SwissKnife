@@ -26,5 +26,11 @@
     <ClInclude Include="UE4Core.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Driver.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Game.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -16,9 +16,10 @@ std::unique_ptr<sol::state> state;
 
 ULONG_PTR ENGINE_OFFSET = 0;
 
-//#define DRV_MODE
+#define DRV_MODE
 #ifdef DRV_MODE
 /* TODO */
+#include "Driver.hpp"
 #endif
 
 #include <vector>
@@ -45,6 +46,11 @@ std::wstring sWndFind = L"";
 HWND GetPUBGWindowProcessId(__out LPDWORD lpdwProcessId)
 {
 	HWND  hWnd = FindWindowW(NULL, sWndFind.c_str());
+	if (hWnd == NULL) {
+		hWnd = FindWindowW(L"UnrealWindow", NULL);
+
+	}
+	
 	if (hWnd != NULL)
 	{
 		if (!GetWindowThreadProcessId(hWnd, lpdwProcessId))
@@ -160,6 +166,7 @@ void ReadTo(LPVOID ptr, T* out, int len) {
 }
 #pragma region UE4
 
+std::function<const char* (DWORD)> getNameFnc;
 
 LPBYTE GNames = 0;
 std::map<int, std::string> nameMap;
@@ -173,6 +180,8 @@ public:
 		return nameMap[id].c_str();
 	}
 	static const char* GetNameS(int id) {
+
+		if (getNameFnc) return getNameFnc(id);
 		static char m_name[124];
 		char msg[124];
 		auto ptr = GNames;
@@ -340,9 +349,11 @@ public:
 		return obj.Offset;
 	}
 	WORD GetBitMask() {
+		if (UObj_Offsets::dwBitmaskOffset) Read<WORD>((LPBYTE)ptr + UObj_Offsets::dwBitmaskOffset);
 		return Read<WORD>((LPBYTE)ptr + offsetof(UBoolProperty, BitMask) + 2);
 	}
 	UPropertyProxy GetInner() {
+		if (UObj_Offsets::dwInnerOffset) return UPropertyProxy(Read<ULONG_PTR>((LPBYTE)ptr + UObj_Offsets::dwInnerOffset));
 		return UPropertyProxy(Read<ULONG_PTR>((LPBYTE)ptr + offsetof(UArrayProperty, Inner)));
 	}
 	UPropertyProxy GetKey() {
@@ -614,7 +625,6 @@ std::string GetObjectValue(ULONG_PTR pObj, UPropertyProxy* pProperty, ULONG_PTR 
 		return "ScriptDeletage";
 	}
 	else if (pProperty->IsArray()) {
-
 		TArray<ULONG_PTR> buf = Read<TArray<ULONG_PTR>>((LPBYTE)dwOffset);
 		std::string sPropertyTypeInner = pProperty->GetInner().GetName();
 		std::string sArray;
@@ -777,8 +787,7 @@ std::string GetInfo(ULONG_PTR ptr) {
 		jInfo[iInfo++] = i;
 	};
 
-	std::function<void(UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset)> fnc = [&](UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset) {
-		std::string structName = fStruct.GetName();
+	std::function<void(std::string structName,UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset)> fnc = [&](std::string structName,UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset) {
 		//iter child
 		std::vector< UPropertyProxy> vProperty;
 
@@ -803,16 +812,41 @@ std::string GetInfo(ULONG_PTR ptr) {
 		//add size to offset
 		for(DWORD i = 0; i < vProperty.size();i++) {
 			auto f = vProperty[i];
+			if (i == 0) {
+
+				if (f.GetOffset() > 0) {
+					_AddItem("UNK", offset,structName+".MISSED", GetHex(f.GetOffset()));
+					//print missed
+				}
+			}
 			static int bIn = 0;
-			if (f.IsStruct() && bIn < 3) {
+			if (f.IsStruct() ) {
 				bIn++;
-				fnc(f, ptr, offset + f.GetOffset());
+				fnc(structName+"."+f.GetName(),f, ptr, offset + f.GetOffset());
 				bIn--;
 			}
 			else {
-				if (f.GetArrayDim() > 1) {
-					_AddItem(f.GetClass().GetName(), f.GetOffset(), f.GetFullName(), "ARRAY DIM0");
-					continue;
+				DWORD arrayDim = f.GetArrayDim();
+				if (arrayDim > 1) {
+						DWORD size = f.GetSize();
+						DWORD nSize = i + 1 < vProperty.size() ? (vProperty[i + 1].GetOffset() - f.GetOffset()) / arrayDim : arrayDim * size;
+						for (DWORD j = 0; j < arrayDim; j++) {
+							char name[512];
+							
+							UPropertyProxy cp = f.ptr + 0x80;// Read<DWORD64>(f.ptr + 0x90); //using this trick because we read class from *(+0x10)
+							sprintf_s(name, 512, "%s.%s[%i]",structName.c_str(), f.GetName().c_str(), j);
+							//sprintf_s(name, 512, "%p %s[%i]", f.ptr, cp.GetName().c_str(), j);
+
+							ULONG_PTR lParam = 0;
+							std::string value = GetObjectValue(ptr, &cp, offset + f.GetOffset(), lParam, true);//"value";
+
+							cp = Read<DWORD64>(f.ptr + 0x90);
+							_AddItem(cp.GetName(), offset + f.GetOffset()+ (j*nSize), name, value);
+							//dwOffset += nSize;
+						}
+						continue;
+					//_AddItem(f.GetClass().GetName(), offset+f.GetOffset(), structName+"."+f.GetName(), "ARRAY DIM"+std::to_string(f.GetArrayDim()));
+					//continue;
 				}
 				//OutputDebugStringA(f.GetName().c_str());
 				//auto pScriptStruct = ((UStructProperty *)pProperty)->Struct;
@@ -838,7 +872,7 @@ std::string GetInfo(ULONG_PTR ptr) {
 			}
 			size = f.GetSize();
 			if (f.IsStruct()) {
-				fnc(f, ptr, f.GetOffset());
+				fnc(f.GetName(),f, ptr, f.GetOffset());
 			}
 			else {
 				auto arrayDim = f.GetArrayDim();
@@ -848,7 +882,7 @@ std::string GetInfo(ULONG_PTR ptr) {
 					for (DWORD j = 0; j < arrayDim; j++) {
 						char name[124];
 
-						sprintf_s(name, 124, "%s[%i]", f.GetFullName(), j);
+						sprintf_s(name, 124, "%s[%i]", f.GetName().c_str(), j);
 						_AddItem("ARRAY", dwOffset, name, "ARRAY DIM");
 						dwOffset += nSize;
 					}
@@ -1145,8 +1179,6 @@ bool LuaInit() {
 			static FieldCache fAcknowledgedPawn = FieldCache("AcknowledgedPawn");
 
 			char msg[124];
-			//sprintf_s(msg, 124, "1local %p\n", ptr1);
-			//OutputDebugStringA(msg);
 			auto ogi = Read<ULONG_PTR>((LPBYTE)ptr1 + fOwningGameInstance.Find(ptr1)); //owning game instance //read 190
 			if (!ogi) return pRet;
 			//sprintf_s(msg, 124, "2local %p\n", ogi);
@@ -1613,6 +1645,10 @@ template<class T> T __ROL__(T value, int count)
 	}
 	return value;
 }
+#define _BYTE BYTE
+#define _WORD WORD
+#define _QWORD DWORD64
+#define _DWORD DWORD
 inline WORD __ROL2__(WORD value, int count) { return __ROL__((WORD)value, count); }
 inline WORD __ROR2__(WORD value, int count) { return __ROL__((WORD)value, -count); }
 inline DWORD   __ROL4__(DWORD value, int count) { return __ROL__((DWORD)value, count); }
@@ -1630,7 +1666,12 @@ inline DWORD64 __ROL8__(DWORD64 value, int count) { return __ROL__((DWORD64)valu
 #define WORDn(x, n)   (*((WORD*)&(x)+n))
 #define WORD1(x)   WORDn(x,  1)
 #define WORD2(x)   WORDn(x,  2)         // third word of the object, unsigned
-void InitPubGSteam() {
+inline BYTE  __ROR1__(BYTE  value, int count) { return __ROL__((BYTE)value, -count); }
+inline BYTE  __ROL1__(BYTE  value, int count) { return __ROL__((BYTE)value, count); }
+
+/* MOVED TO GAME.HPP
+
+void InitPubGSteam2() {
 	hProcess = NULL;
 	base = 0;
 	sWndFind = L"PLAYERUNKNOWN'S BATTLEGROUNDS ";
@@ -1686,6 +1727,9 @@ void InitPubGSteam() {
 	GetBase();
 	GScan();
 }
+*/
+
+#include "Game.hpp"
 
 int main() {
 	LuaInit();

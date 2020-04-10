@@ -221,6 +221,10 @@ Vue.component('demo-grid', {
               //this.$parent.goPtr = entry.lParam;
                 connection.send('get_info '+entry.lParam) 
               //..
+          }  else if(entry.type == 'ArrayProperty' && entry.lParam > 0) {
+              //this.$parent.goPtr = entry.lParam;
+                connection.send('get_info '+entry.lParam) 
+              //..
           } else if(entry.type == 'FloatProperty' || entry.type == 'StrProperty' || entry.type == 'IntProperty' ||entry.type == 'BoolProperty' || entry.type == 'ByteProperty' ) {
               entry.edit = true;
               this.forceRerender();

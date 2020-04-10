@@ -219,6 +219,7 @@ namespace UObj_Offsets {
 	DWORD dwSuperClassOffset2 = offsetof(UStruct, SuperField);
 	DWORD dwSizeOffset = offsetof(UProperty, ArrayDim);
 	DWORD dwStructOffset = 0;
+	DWORD dwBitmaskOffset = 0;
 	DWORD dwInnerOffset = offsetof(UStructProperty, Struct);
 	DWORD dwPropSize = offsetof(UStruct, PropertySize);
 	DWORD dwChildOffset = offsetof(UStruct, Children);
