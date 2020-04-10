@@ -192,8 +192,7 @@ Vue.component('demo-grid', {
       this.componentKey += 1;  
     },handleBlur(entry,event) {
         var val = event.target.value;
-        var ptr = parseInt(this.goPtr)+entry.offset;
-        
+        var ptr = parseInt(document.demo2.goPtr)+entry.offset;
         var fnc = '';
         if(entry.type == 'FloatProperty') fnc = 'WriteFloat';
         else if(entry.type == 'StrProperty') fnc = 'WriteUEStr';
@@ -311,7 +310,7 @@ document.demo2 = new Vue({
         connection.send('do_script '+$('#script_area').val());
     }
     function DoX() {
-  connection.send('get_info '+parseInt($('#ptr').val(),16)) 
+        connection.send('get_info '+parseInt($('#ptr').val(),16)) 
     }
     function SetupWS() {
 const url = 'ws://localhost:1357/echo'
