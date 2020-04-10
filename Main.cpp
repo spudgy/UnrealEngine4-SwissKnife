@@ -3,14 +3,20 @@
 
 #include "client_ws.hpp"
 #include "server_ws.hpp"
-#pragma comment(lib,"libcryptoMT.lib")
-#pragma comment(lib,"Crypt32.lib")
-
 #include <Windows.h>
 #include <thread>
-
 #include "sol2.hpp"
+#include "json.hpp"
+
+#pragma comment(lib,"libcryptoMT.lib")
+#pragma comment(lib,"Crypt32.lib")
 #pragma comment(lib,"LuaJIT/lib64/Release/LuaJIT.lib")
+
+using json = nlohmann::json;
+using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
+
+WsServer server;
+std::vector<std::shared_ptr<WsServer::Connection>> vConnects;
 std::unique_ptr<sol::state> state;
 #define lua (*state)
 
@@ -22,8 +28,12 @@ ULONG_PTR ENGINE_OFFSET = 0;
 #include "Driver.hpp"
 #endif
 
+#pragma region Memory
+#include <string>
+
 #include <vector>
 #include <TlHelp32.h>
+#include <Psapi.h>
 static std::vector<uint64_t> GetProcessIdsByName(std::string name)
 {
 	std::vector<uint64_t> res;
@@ -50,7 +60,7 @@ HWND GetPUBGWindowProcessId(__out LPDWORD lpdwProcessId)
 		hWnd = FindWindowW(L"UnrealWindow", NULL);
 
 	}
-	
+
 	if (hWnd != NULL)
 	{
 		if (!GetWindowThreadProcessId(hWnd, lpdwProcessId))
@@ -61,7 +71,6 @@ HWND GetPUBGWindowProcessId(__out LPDWORD lpdwProcessId)
 	}
 	return hWnd;
 }
-#include <Psapi.h>
 HMODULE GetModuleBaseAddress(HANDLE handle) {
 	HMODULE hMods[1024];
 	DWORD   cbNeeded;
@@ -124,7 +133,7 @@ bool IsBadReadPtrEx(void* p)
 
 
 #ifdef DRV_MODE
-	if (drv.Query((HANDLE)hProcess, (ULONG_PTR)p, &mbi) )
+	if (drv.Query((HANDLE)hProcess, (ULONG_PTR)p, &mbi))
 #else
 	if (::VirtualQueryEx(hProcess, p, &mbi, sizeof(mbi)))
 #endif
@@ -164,6 +173,8 @@ template <class T>
 void ReadTo(LPVOID ptr, T* out, int len) {
 	ReadProcessMemoryCallback(hProcess, ptr, out, len, NULL);
 }
+#pragma endregion Memory
+
 #pragma region UE4
 
 std::function<const char* (DWORD)> getNameFnc;
@@ -426,58 +437,98 @@ public:
 		return GetClass().Is(name);
 	}
 };
+
+
+bool FindSignature(LPBYTE ptr, int nsize, char* sign, UINT nLen) {
+	for (DWORD i = 0; i < nsize; i++) {
+		int j = 0;
+		while (ptr[i + j] == (BYTE)sign[j]) {
+			j++;
+			if (j == nLen) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void GScan() {
+	MEMORY_BASIC_INFORMATION meminfo = { 0 };
+	ULONG_PTR current = 0x10000;
+	FUObjectArray GObj{};
+	int counter = 0;
+	char msg[124];
+#ifdef DRV_MODE
+	while (drv.Query((HANDLE)hProcess, current, &meminfo) && current < GetBase())
+#else
+	while (VirtualQueryEx(hProcess, (PVOID)current, &meminfo, 48) && current < GetBase())
+#endif
+	{
+		if (meminfo.Protect & PAGE_NOACCESS)
+		{
+			current += meminfo.RegionSize;
+			continue;
+		}
+		if (meminfo.State == MEM_COMMIT && (meminfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+		{
+			if (meminfo.RegionSize == 0x10000 && !GNames)
+			{
+				char* bMem = (char*)malloc(0x10000);
+				ReadTo(meminfo.BaseAddress, bMem, 0x10000);
+
+				const wchar_t* sign = L"On engine startup";
+				const wchar_t* sign2 = L"Defines the memory";
+				if (Read<ULONG_PTR>((PCHAR)meminfo.BaseAddress + 0x80) != 0 && FindSignature((LPBYTE)bMem, 0x10000, (char*)sign, wcslen(sign))) {
+					LPBYTE lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x80)) + 0x10;
+					char bMem[24];
+					ReadTo(lpMem, bMem, 24);
+					OutputDebugStringA(bMem);
+					if (!strcmp(bMem, "None")) {
+						OutputDebugStringA("REALLY FOUND!!!!!\n");
+						GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x80);
+					}
+					else {
+						lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x510)) + 0x10;
+						ReadTo(lpMem, bMem, 24);
+						OutputDebugStringA(bMem);
+						if (!strcmp(bMem, "None")) {
+							OutputDebugStringA("REALLY FOUND2!!!!!\n");
+							GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x510);
+						}
+					}
+				}
+				else if (Read<ULONG_PTR>((PCHAR)meminfo.BaseAddress + 0x10) != 0 && FindSignature((LPBYTE)bMem, 0x10000, (char*)sign2, wcslen(sign2))) {
+					//check if points to "None"
+					LPBYTE lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x10)) + 0x10;
+					char bMem[24];
+					ReadTo(lpMem, bMem, 24);
+					OutputDebugStringA(bMem);
+					if (!strcmp(bMem, "None")) {
+						OutputDebugStringA("REALLY FOUND!!!!!\n");
+						GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x10);
+					}
+				}
+				free(bMem);
+				//}
+			}
+		}
+		current += meminfo.RegionSize;
+	}
+	//GetGObjectsGen();
+
+	ULONG_PTR gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
+	ULONG_PTR pGObj = 0;
+	//sprintf_s(msg, 124, "GObj PTR: %p \n", GetGObjects());
+	//OutputDebugStringA(msg);
+	sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
+	OutputDebugStringA(msg);
+	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", GNames, GNames - GetBase(), hProcess);
+	OutputDebugStringA(msg);
+}
 #pragma endregion UE4
 
-using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
-WsServer server;
-#include "json.hpp"
-using json = nlohmann::json;
 
-
-
-int split_in_args(std::vector<std::string>& qargs, std::string command) {
-	int len = command.length();
-	bool qot = false, sqot = false;
-	int arglen;
-	for (int i = 0; i < len; i++) {
-		int start = i;
-		if (command[i] == '\"') {
-			qot = true;
-		}
-		else if (command[i] == '\'') sqot = true;
-
-		if (qot) {
-			i++;
-			start++;
-			while (i < len && command[i] != '\"')
-				i++;
-			if (i < len)
-				qot = false;
-			arglen = i - start;
-			i++;
-		}
-		else if (sqot) {
-			i++;
-			while (i < len && command[i] != '\'')
-				i++;
-			if (i < len)
-				sqot = false;
-			arglen = i - start;
-			i++;
-		}
-		else {
-			while (i < len && command[i] != ' ')
-				i++;
-			arglen = i - start;
-		}
-		qargs.push_back(command.substr(start, arglen));
-	}
-	return qargs.size();
-}
-std::vector<std::shared_ptr<WsServer::Connection>> vConnects;
-
-
-
+#pragma region UE4Parser
 #include <locale>
 #include <codecvt>
 std::string ws2s(const std::wstring& wstr)
@@ -564,13 +615,6 @@ bool CheckBitState(ULONG_PTR dwOffset, WORD dwBitmask) {
 	}
 	return bRet;
 }
-/*static_assert(offsetof(SDK::UProperty, Class) == 0x10);
-static_assert(offsetof(SDK::UProperty, Name) == 0x18);
-static_assert(offsetof(SDK::UProperty, Outer) == 0x20);
-
-static_assert(offsetof(SDK::UProperty, Offset) == 0x44);
-static_assert(offsetof(SDK::UBoolProperty, BitMask) == 0x70);
-static_assert(offsetof(SDK::UStructProperty, Struct) == 0x70);*/
 
 DWORD_PTR Decrypt_RootComponent(__int64 v3)
 {
@@ -1135,8 +1179,10 @@ std::string GetList() {
 
 	return jsDump;
 }
+#pragma endregion UE4Parser
 
 
+#pragma region Lua
 bool LuaInit() {
 	//x = 0;
 	state.reset(new sol::state);
@@ -1181,19 +1227,11 @@ bool LuaInit() {
 			char msg[124];
 			auto ogi = Read<ULONG_PTR>((LPBYTE)ptr1 + fOwningGameInstance.Find(ptr1)); //owning game instance //read 190
 			if (!ogi) return pRet;
-			//sprintf_s(msg, 124, "2local %p\n", ogi);
-			//OutputDebugStringA(msg);
 			auto lp = Read<ULONG_PTR>(Read<ULONG_PTR>(ogi + fLocalPlayers.Find(ogi)));
 			if (!lp) return pRet;
-			//sprintf_s(msg, 124, "3local %p\n", lp);
-			//OutputDebugStringA(msg);
 			auto pc = Read<ULONG_PTR>(lp + fPlayerController.Find(lp));
 			if (!pc) return pRet;
-			//sprintf_s(msg, 124, "4local %p\n", pc);
-			//OutputDebugStringA(msg);
-			pRet = Read<ULONG_PTR>(pc + fAcknowledgedPawn.Find(pc));// 0x488);
-			//sprintf_s(msg, 124, "5local %p\n", pRet);
-			//OutputDebugStringA(msg);
+			pRet = Read<ULONG_PTR>(pc + fAcknowledgedPawn.Find(pc));
 		}
 		return pRet;
 
@@ -1211,47 +1249,6 @@ bool LuaInit() {
 			auto dwOffset = p.GetOffset();
 			if (bMatch) {
 				pRet = Read<ULONG_PTR>((LPBYTE)pObj + dwOffset);
-				break;
-			}
-		}
-		return pRet;
-		});
-	lua.set_function(("SetInt"), [](ULONG_PTR pObj, std::string pText, DWORD nVal) {
-		DWORD pRet = 0;
-		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
-
-		for (DWORD i = 0; i < vProperty.size(); i++) {
-			auto p = vProperty[i];
-			std::string name = p.GetName();
-			bool bMatch = name == pText;
-			auto dwOffset = p.GetOffset();
-			if (!bMatch && p.IsStruct()) {
-				UClassProxy c = p.GetStruct().As<UClassProxy>();
-				//list properties
-				//TODO: CHECK SUPER
-				UPropertyProxy _f = c.GetChildren().As<UPropertyProxy>();
-
-				while (!bMatch) {
-					if (!_f.IsFunction()) {
-						//check _f name
-						name = p.GetName().append(".").append(_f.GetName());
-						bMatch = name == pText;
-						if (bMatch) {
-							p = _f;
-							dwOffset += _f.GetOffset();
-						}
-					}
-					if (!_f.HasNext()) {
-						break;
-					}
-					_f = _f.GetNext();
-					//break;
-				}
-			}
-			if (bMatch) {
-				pRet = 1;
-				Write<DWORD>((LPBYTE)pObj + dwOffset, nVal);
 				break;
 			}
 		}
@@ -1379,46 +1376,6 @@ bool LuaInit() {
 		}
 		return pRet;
 		});
-	lua.set_function(("GetInt"), [](ULONG_PTR pObj, std::string pText) {
-		DWORD pRet = 0;
-		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
-
-		for (DWORD i = 0; i < vProperty.size(); i++) {
-			auto p = vProperty[i];
-			std::string name = p.GetName();
-			bool bMatch = name == pText;
-			auto dwOffset = p.GetOffset();
-			if (!bMatch && p.IsStruct()) {
-				UClassProxy c = p.GetStruct().As<UClassProxy>();
-				//list properties
-				//TODO: CHECK SUPER
-				UPropertyProxy _f = c.GetChildren().As<UPropertyProxy>();
-
-				while (!bMatch) {
-					if (!_f.IsFunction()) {
-						//check _f name
-						name = p.GetName().append(".").append(_f.GetName());
-						bMatch = name == pText;
-						if (bMatch) {
-							p = _f;
-							dwOffset += _f.GetOffset();
-						}
-					}
-					if (!_f.HasNext()) {
-						break;
-					}
-					_f = _f.GetNext();
-					//break;
-				}
-			}
-			if (bMatch) {
-				pRet = Read<DWORD>((LPBYTE)pObj + dwOffset);
-				break;
-			}
-		}
-		return pRet;
-		});
 	lua.set_function(("Log"), [](std::string log) {
 		OutputDebugStringA(log.c_str());
 		});
@@ -1434,8 +1391,52 @@ bool LuaInit() {
 			connection->send(send_stream, [](const SimpleWeb::error_code& /*ec*/) { /*handle error*/ });
 		}
 		});
+	return true;
 }
+#pragma endregion Lua
 
+
+#pragma region WebSocket
+
+int split_in_args(std::vector<std::string>& qargs, std::string command) {
+	int len = command.length();
+	bool qot = false, sqot = false;
+	int arglen;
+	for (int i = 0; i < len; i++) {
+		int start = i;
+		if (command[i] == '\"') {
+			qot = true;
+		}
+		else if (command[i] == '\'') sqot = true;
+
+		if (qot) {
+			i++;
+			start++;
+			while (i < len && command[i] != '\"')
+				i++;
+			if (i < len)
+				qot = false;
+			arglen = i - start;
+			i++;
+		}
+		else if (sqot) {
+			i++;
+			while (i < len && command[i] != '\'')
+				i++;
+			if (i < len)
+				sqot = false;
+			arglen = i - start;
+			i++;
+		}
+		else {
+			while (i < len && command[i] != ' ')
+				i++;
+			arglen = i - start;
+		}
+		qargs.push_back(command.substr(start, arglen));
+	}
+	return qargs.size();
+}
 void ParseMessage(std::shared_ptr<WsServer::Connection> connection, std::string msg) {
 	static std::map<std::string, std::function<void(std::shared_ptr<WsServer::Connection> connection, std::string msg, int nArgs, std::vector<std::string> vArgs)>> vHandles;
 	static bool bInit = false;
@@ -1527,101 +1528,9 @@ std::thread StartWebServer() {
 
 	return server_thread;
 }
+#pragma endregion WebSocket
 
 
-bool FindSignature(LPBYTE ptr, int nsize, char* sign, UINT nLen) {
-	for (DWORD i = 0; i < nsize; i++) {
-		int j = 0;
-		while (ptr[i + j] == (BYTE)sign[j]) {
-			j++;
-			if (j == nLen) {
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-void GScan() {
-	MEMORY_BASIC_INFORMATION meminfo = { 0 };
-	ULONG_PTR current = 0x10000;
-	FUObjectArray GObj{};
-	int counter = 0;
-	char msg[124];
-#ifdef DRV_MODE
-	while(drv.Query((HANDLE)hProcess, current, &meminfo) && current < GetBase())
-#else
-	while ( VirtualQueryEx(hProcess, (PVOID)current, &meminfo, 48) && current < GetBase())
-#endif
-	{
-		if (meminfo.Protect & PAGE_NOACCESS)
-		{
-			current += meminfo.RegionSize;
-			continue;
-		}
-		if (meminfo.State == MEM_COMMIT && (meminfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
-		{
-			if (meminfo.RegionSize == 0x10000 && !GNames)
-			{
-				char* bMem = (char*)malloc(0x10000);
-				ReadTo(meminfo.BaseAddress, bMem, 0x10000);
-
-				const wchar_t* sign = L"On engine startup";
-				const wchar_t* sign2 = L"Defines the memory";
-				if (Read<ULONG_PTR>((PCHAR)meminfo.BaseAddress + 0x80) != 0 && FindSignature((LPBYTE)bMem, 0x10000, (char*)sign, wcslen(sign))) {
-					LPBYTE lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x80)) + 0x10;
-					char bMem[24];
-					ReadTo(lpMem, bMem, 24);
-					OutputDebugStringA(bMem);
-					if (!strcmp(bMem, "None")) {
-						OutputDebugStringA("REALLY FOUND!!!!!\n");
-						GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x80);
-					}
-					else {
-						lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x510)) + 0x10;
-						ReadTo(lpMem, bMem, 24);
-						OutputDebugStringA(bMem);
-						if (!strcmp(bMem, "None")) {
-							OutputDebugStringA("REALLY FOUND2!!!!!\n");
-							GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x510);
-						}
-					}
-				}
-				else if (Read<ULONG_PTR>((PCHAR)meminfo.BaseAddress + 0x10) != 0 && FindSignature((LPBYTE)bMem, 0x10000, (char*)sign2, wcslen(sign2))) {
-					//check if points to "None"
-					LPBYTE lpMem = Read<LPBYTE>(Read<LPBYTE>((PCHAR)meminfo.BaseAddress + 0x10)) + 0x10;
-					char bMem[24];
-					ReadTo(lpMem, bMem, 24);
-					OutputDebugStringA(bMem);
-					if (!strcmp(bMem, "None")) {
-						OutputDebugStringA("REALLY FOUND!!!!!\n");
-						GNames = (LPBYTE)((PCHAR)meminfo.BaseAddress + 0x10);
-					}
-				}
-				free(bMem);
-				//}
-			}
-		}
-		current += meminfo.RegionSize;
-	}
-	//GetGObjectsGen();
-
-	ULONG_PTR gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
-	ULONG_PTR pGObj = 0;
-	//sprintf_s(msg, 124, "GObj PTR: %p \n", GetGObjects());
-	//OutputDebugStringA(msg);
-	sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
-	OutputDebugStringA(msg);
-	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", GNames, GNames - GetBase(), hProcess);
-	OutputDebugStringA(msg);
-	for (int i = 0; i < 0x5000; i++) {
-		//OutputDebugStringA(CNames::GetName(i));
-		//OutputDebugStringA("\n");
-	}
-	AActor p(Read<ULONG_PTR>((LPBYTE)GetBase() + ENGINE_OFFSET));
-	OutputDebugStringA(p.GetName());
-	OutputDebugStringA("\n");
-}
 
 template<class T> T __ROL__(T value, int count)
 {
@@ -1649,6 +1558,8 @@ template<class T> T __ROL__(T value, int count)
 #define _WORD WORD
 #define _QWORD DWORD64
 #define _DWORD DWORD
+inline BYTE  __ROR1__(BYTE  value, int count) { return __ROL__((BYTE)value, -count); }
+inline BYTE  __ROL1__(BYTE  value, int count) { return __ROL__((BYTE)value, count); }
 inline WORD __ROL2__(WORD value, int count) { return __ROL__((WORD)value, count); }
 inline WORD __ROR2__(WORD value, int count) { return __ROL__((WORD)value, -count); }
 inline DWORD   __ROL4__(DWORD value, int count) { return __ROL__((DWORD)value, count); }
@@ -1666,8 +1577,6 @@ inline DWORD64 __ROL8__(DWORD64 value, int count) { return __ROL__((DWORD64)valu
 #define WORDn(x, n)   (*((WORD*)&(x)+n))
 #define WORD1(x)   WORDn(x,  1)
 #define WORD2(x)   WORDn(x,  2)         // third word of the object, unsigned
-inline BYTE  __ROR1__(BYTE  value, int count) { return __ROL__((BYTE)value, -count); }
-inline BYTE  __ROL1__(BYTE  value, int count) { return __ROL__((BYTE)value, count); }
 
 /* MOVED TO GAME.HPP
 
