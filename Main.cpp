@@ -1640,9 +1640,19 @@ void InitPubGSteam2() {
 
 #include "Game.hpp"
 
+void InitBorderlands3() {
+
+	hProcess = NULL;
+	base = 0;
+	sWndFind = L"Borderlands® 3  ";
+	ENGINE_OFFSET = 0x6A09A08; //48 8B 88 B0 07 00 00 48 85 C9 74 3F, -7
+	GetBase();
+	GScan();
+}
 int main() {
 	LuaInit();
-	InitPubGSteam();
+	InitBorderlands3();
+	//InitPubGSteam();
 	std::thread t = StartWebServer();
 
 	//Here we are using PubG Steam as PoC but it should work for any UE4 Game.
