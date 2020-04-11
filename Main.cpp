@@ -22,7 +22,7 @@ std::unique_ptr<sol::state> state;
 
 ULONG_PTR ENGINE_OFFSET = 0;
 
-#define DRV_MODE
+//#define DRV_MODE
 #ifdef DRV_MODE
 /* TODO */
 #include "Driver.hpp"
@@ -520,6 +520,10 @@ void GScan() {
 	ULONG_PTR pGObj = 0;
 	//sprintf_s(msg, 124, "GObj PTR: %p \n", GetGObjects());
 	//OutputDebugStringA(msg);
+	for (DWORD i = 0; i < 10; i++) {
+		OutputDebugStringA(CNames::GetName(i));
+		OutputDebugStringA("\n");
+	}
 	sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
 	OutputDebugStringA(msg);
 	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", GNames, GNames - GetBase(), hProcess);
@@ -1019,10 +1023,12 @@ public:
 							dwOffset += _f.GetOffset();
 						}
 					}
-					if (!_f.HasNext()) {
+					if (!_f.HasNext() ) {
 						break;
 					}
+					DWORD64 lastPtr = _f.ptr;
 					_f = _f.GetNext();
+					if (_f.ptr == lastPtr) break;
 					//break;
 				}
 			}
@@ -1645,7 +1651,7 @@ void InitBorderlands3() {
 	hProcess = NULL;
 	base = 0;
 	sWndFind = L"Borderlands® 3  ";
-	ENGINE_OFFSET = 0x6A09A08; //48 8B 88 B0 07 00 00 48 85 C9 74 3F, -7
+	ENGINE_OFFSET = 0x6A09A08; //48 8B 88 ?? ?? 00 00 48 85 C9 74 3F, -7
 	GetBase();
 	GScan();
 }
