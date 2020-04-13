@@ -22,7 +22,7 @@ std::unique_ptr<sol::state> state;
 
 ULONG_PTR ENGINE_OFFSET = 0;
 
-//#define DRV_MODE
+#define DRV_MODE
 #ifdef DRV_MODE
 /* TODO */
 #include "Driver.hpp"
@@ -182,6 +182,29 @@ std::function<const char* (DWORD)> getNameFnc;
 LPBYTE GNames = 0;
 std::map<int, std::string> nameMap;
 DWORD NAME_CHUNK = 0x4000;
+
+
+DWORD64 fNamePool = 0;
+const char* GetNameFromFName(int key)
+{
+	DWORD chunkOffset = ((int)(key) >> 16); // Block
+	WORD nameOffset = key;
+
+	if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
+
+	printf("chunk %i / %i ", chunkOffset,nameOffset);
+	// The first chunk/shard starts at 0x10, so even if chunkOffset is zero, we will start there.
+	auto namePoolChunk = Read(fNamePool + ((chunkOffset + 2) * 8));
+	auto entryOffset = namePoolChunk + (DWORD)(2 * nameOffset);
+	WORD nameLength = Read<WORD>(entryOffset) >> 6;
+	if (nameLength > 256)nameLength = 255;
+	static char cBuf[256];
+	ReadTo((LPBYTE)entryOffset + 2, cBuf, nameLength);
+	cBuf[nameLength] = 0;
+	printf("ret %s\n", cBuf);
+	return cBuf;
+}
+
 class CNames {
 public:
 	static const char* GetName(int id) {
@@ -191,7 +214,7 @@ public:
 		return nameMap[id].c_str();
 	}
 	static const char* GetNameS(int id) {
-
+		if (fNamePool) return GetNameFromFName(id);
 		if (getNameFnc) return getNameFnc(id);
 		static char m_name[124];
 		char msg[124];
@@ -1108,7 +1131,7 @@ std::vector<AActor> CWorld::GetActors() {
 	for (int i = 0; i < lBuf.Count; i++) {
 		ULONG_PTR level = lvls[i];
 
-		ULONG_PTR pArr = level + 0xA0;
+		ULONG_PTR pArr = level + UObj_Offsets::dwActorsList;
 		if (getActorsFnc) pArr = getActorsFnc(level);
 		TArray<ULONG_PTR> buf = Read<TArray<ULONG_PTR>>(pArr);
 		ULONG_PTR* ptrs = new ULONG_PTR[buf.Count];
@@ -1643,9 +1666,21 @@ void InitPubGSteam2() {
 	GScan();
 }
 */
+//#include "Game.hpp"
+void InitLastOasis() {
+	UObj_Offsets::dwActorsList = 0x98;//
+	UObj_Offsets::dwChildOffset = 0x68;//
+	UObj_Offsets::dwSuperClassOffset2 = 0x40;
+	hProcess = NULL;
+	base = 0;
+	sWndFind = L"Last Oasis  ";
+	ENGINE_OFFSET = 0x3DC1A98; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
+	DWORD FNAME_POOL = 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
+	GetBase();
+	GScan();
+	fNamePool = GetBase()+FNAME_POOL;
 
-#include "Game.hpp"
-
+}
 void InitBorderlands3() {
 
 	hProcess = NULL;
@@ -1657,7 +1692,8 @@ void InitBorderlands3() {
 }
 int main() {
 	LuaInit();
-	InitBorderlands3();
+	InitLastOasis();
+	//InitBorderlands3();
 	//InitPubGSteam();
 	std::thread t = StartWebServer();
 
