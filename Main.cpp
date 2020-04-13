@@ -192,7 +192,7 @@ const char* GetNameFromFName(int key)
 
 	if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
 
-	printf("chunk %i / %i ", chunkOffset,nameOffset);
+	//printf("chunk %i / %i ", chunkOffset,nameOffset);
 	// The first chunk/shard starts at 0x10, so even if chunkOffset is zero, we will start there.
 	auto namePoolChunk = Read(fNamePool + ((chunkOffset + 2) * 8));
 	auto entryOffset = namePoolChunk + (DWORD)(2 * nameOffset);
@@ -201,7 +201,7 @@ const char* GetNameFromFName(int key)
 	static char cBuf[256];
 	ReadTo((LPBYTE)entryOffset + 2, cBuf, nameLength);
 	cBuf[nameLength] = 0;
-	printf("ret %s\n", cBuf);
+	//printf("ret %s\n", cBuf);
 	return cBuf;
 }
 
@@ -768,12 +768,19 @@ std::vector< UPropertyProxy> GetProps(ULONG_PTR ptr, DWORD& structSize) {
 	//check class
 	std::vector< UPropertyProxy> vProperty;
 	//find structure and dump it here..
+	structSize = c.GetSize();
 	while (c.HasSuperClass()) {
-		structSize += c.GetSize();
+		//check if no props
+		if (c.GetSuperClass().GetSize() == c.GetSize()) {
+			OutputDebugStringA("NO PROPS!");
+			c = c.GetSuperClass();
+			continue;
+		}
+
 		//print size
 		std::string className = c.GetName();
 
-		OutputDebugStringA(className.c_str());
+		//OutputDebugStringA(className.c_str());
 		if (!c.HasChildren()) {
 			c = c.GetSuperClass();
 			continue;
@@ -781,6 +788,8 @@ std::vector< UPropertyProxy> GetProps(ULONG_PTR ptr, DWORD& structSize) {
 		//list properties
 		UPropertyProxy f = c.GetChildren().As<UPropertyProxy>();
 		while (1) {
+			//OutputDebugStringA(f.GetName().c_str());
+			//OutputDebugStringA("\n");
 			if (!f.IsFunction()) {
 				vProperty.push_back(f);
 			}
@@ -1668,6 +1677,9 @@ void InitPubGSteam2() {
 */
 //#include "Game.hpp"
 void InitLastOasis() {
+	UObj_Offsets::dwPropSize = 0x50;
+	UObj_Offsets::dwSizeOffset = 0x30;//?
+	dwOffOffset = 0x44;
 	UObj_Offsets::dwActorsList = 0x98;//
 	UObj_Offsets::dwChildOffset = 0x68;//
 	UObj_Offsets::dwSuperClassOffset2 = 0x40;
@@ -1679,7 +1691,8 @@ void InitLastOasis() {
 	GetBase();
 	GScan();
 	fNamePool = GetBase()+FNAME_POOL;
-
+	printf("pEng: %p\n", Read(GetBase()+ENGINE_OFFSET));
+	GetList();
 }
 void InitBorderlands3() {
 
