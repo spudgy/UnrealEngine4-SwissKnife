@@ -676,6 +676,7 @@ std::string GetObjectValue(ULONG_PTR pObj, UPropertyProxy* pProperty, ULONG_PTR 
 	}
 	else if (pProperty->IsClass()) {
 		UClassProxy p(Read<ULONG_PTR>((LPBYTE)dwOffset));
+		lParam = p.ptr;
 		sprintf_s(szBuf, 124, "UClass *%s", p.GetName().c_str());
 		return szBuf;
 	}
@@ -760,10 +761,8 @@ bool SortProperty(UPropertyProxy& pPropertyA, UPropertyProxy& pPropertyB) {
 	}
 	return (pPropertyA.GetOffset() < pPropertyB.GetOffset());
 }
-std::vector< UPropertyProxy> GetProps(ULONG_PTR ptr, DWORD& structSize) {
+std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 	structSize = 0;
-	UObjectProxy p = UObjectProxy(ptr);
-	UClassProxy c = p.GetClass().As<UClassProxy>();
 	//..
 	//check class
 	std::vector< UPropertyProxy> vProperty;
@@ -808,53 +807,15 @@ std::vector< UPropertyProxy> GetProps(ULONG_PTR ptr, DWORD& structSize) {
 	return vProperty;
 }
 
-std::vector< UPropertyProxy> GetPropsS(ULONG_PTR ptr, DWORD& structSize) {
-	structSize = 0;
-	UObjectProxy p = UObjectProxy(ptr);
-	UClassProxy c = p.GetClass().As<UClassProxy>();
-	//..
-	//check class
-	std::vector< UPropertyProxy> vProperty;
-
-	//find structure and dump it here..
-	while (c.HasSuperClass()) {
-		structSize += c.GetSize();
-		//print size
-		std::string className = c.GetName();
-		if (!c.HasChildren()) {
-			c = c.GetSuperClass();
-			continue;
-		}
-		//list properties
-		UPropertyProxy f = c.GetChildren().As<UPropertyProxy>();
-		while (1) {
-			if (!f.IsFunction()) {
-				vProperty.push_back(f);
-			}
-			if (!f.HasNext()) {
-				break;
-			}
-			f = f.GetNext();
-		}
-		c = c.GetSuperClass();
-	}
-	sort(vProperty.begin(), vProperty.end(), SortProperty);
-	return vProperty;
-}
-std::string GetInfo(ULONG_PTR ptr) {
-	auto u = UObjectProxy(ptr);
-
+std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	json j;
 
 	json jInfo;
 	DWORD iInfo = 0;
 
-	UObjectProxy p = UObjectProxy(ptr);
-	UClassProxy c = p.GetClass().As<UClassProxy>();
-
 	DWORD structSize = 0;
 	int iLoops = 0;
-	auto vProperty = GetProps(ptr, structSize);
+	auto vProperty = GetProps(c, structSize);
 	//sort..
 
 	auto _AddItem = [&](std::string type, ULONG_PTR offset, std::string name, std::string  val, ULONG_PTR lParam = 0) {
@@ -988,9 +949,9 @@ std::string GetInfo(ULONG_PTR ptr) {
 			_AddItem("UNK", offset, "MISSED", GetHex(size));
 		}
 	};
-	parseFnc(vProperty, p.ptr, structSize);
+	parseFnc(vProperty, ptr, structSize);
 
-	j["name"] = u.GetName();
+	j["name"] = ptr? UObjectProxy(ptr).GetName() : "CLASS";
 	j["ptr"] = ptr;
 	j["info"] = jInfo;
 
@@ -1003,7 +964,13 @@ std::string GetInfo(ULONG_PTR ptr) {
 	return ret;
 
 }
+std::string GetInfo(ULONG_PTR ptr) {
+	return GetInfo(ptr,UObjectProxy(ptr).GetClass().As<UClassProxy>());
+}
 
+std::string GetClass(ULONG_PTR ptr) {
+	return GetInfo(NULL, UObjectProxy(ptr).As<UClassProxy>());
+}
 
 class FieldCache {
 public:
@@ -1031,7 +998,7 @@ public:
 	DWORD Find(ULONG_PTR pObj) {
 		if (nOffset) return nOffset;
 		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
+		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
 
 		for (DWORD i = 0; i < vProperty.size(); i++) {
 			auto p = vProperty[i];
@@ -1278,7 +1245,7 @@ bool LuaInit() {
 	lua.set_function(("GetObject"), [](ULONG_PTR pObj, std::string pText) {
 		ULONG_PTR pRet = NULL;
 		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
+		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
 
 		for (DWORD i = 0; i < vProperty.size(); i++) {
 			auto p = vProperty[i];
@@ -1294,7 +1261,7 @@ bool LuaInit() {
 		});
 	lua.set_function(("GetField"), [](ULONG_PTR pObj, std::string pText) {
 		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
+		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
 
 		for (DWORD i = 0; i < vProperty.size(); i++) {
 			auto p = vProperty[i];
@@ -1358,7 +1325,7 @@ bool LuaInit() {
 	lua.set_function(("SetField"), [](ULONG_PTR pObj, std::string pText, float fVal) {
 		DWORD pRet = 0;
 		DWORD structSize = 0;
-		auto vProperty = GetProps((ULONG_PTR)pObj, structSize);
+		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
 
 		for (DWORD i = 0; i < vProperty.size(); i++) {
 			auto p = vProperty[i];
@@ -1514,6 +1481,14 @@ void ParseMessage(std::shared_ptr<WsServer::Connection> connection, std::string 
 			//OutputDebugStringA(arg.c_str());
 
 			std::string send_stream = GetInfo(_atoi64(arg.c_str())).c_str();//bRet ? "added to sonic list" : "failed to add to sonic list";
+
+			connection->send(send_stream, [](const SimpleWeb::error_code& /*ec*/) { /*handle error*/ });
+		};
+		vHandles["get_class"] = [](std::shared_ptr<WsServer::Connection> connection, std::string msg, int nArgs, std::vector<std::string> vArgs) {
+			auto arg = vArgs[1]; //
+			//OutputDebugStringA(arg.c_str());
+
+			std::string send_stream = GetClass(_atoi64(arg.c_str())).c_str();//bRet ? "added to sonic list" : "failed to add to sonic list";
 
 			connection->send(send_stream, [](const SimpleWeb::error_code& /*ec*/) { /*handle error*/ });
 		};

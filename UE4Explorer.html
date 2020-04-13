@@ -211,18 +211,19 @@ Vue.component('demo-grid', {
               this.forceRerender();
     },
       greet: function (entry) {
+          console.log(entry);
           if(entry.addr) {
               //document.demo2.goPtr = entry.addr;
                 connection.send('get_info '+entry.addr)
               console.log('get info..');
               
-          } else if(entry.type == 'ObjectProperty' && entry.lParam > 0) {
+          } else if(entry.lParam > 0 && (entry.type == 'ObjectProperty' || entry.type == 'ArrayProperty')) {
               //this.$parent.goPtr = entry.lParam;
                 connection.send('get_info '+entry.lParam) 
               //..
-          }  else if(entry.type == 'ArrayProperty' && entry.lParam > 0) {
+          }  else if(entry.type == 'ClassProperty' && entry.lParam > 0) {
               //this.$parent.goPtr = entry.lParam;
-                connection.send('get_info '+entry.lParam) 
+                connection.send('get_class '+entry.lParam) 
               //..
           } else if(entry.type == 'FloatProperty' || entry.type == 'StrProperty' || entry.type == 'IntProperty' ||entry.type == 'BoolProperty' || entry.type == 'ByteProperty' ) {
               entry.edit = true;
