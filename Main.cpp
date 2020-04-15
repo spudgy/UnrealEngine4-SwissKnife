@@ -22,8 +22,9 @@ std::unique_ptr<sol::state> state;
 
 ULONG_PTR ENGINE_OFFSET = 0;
 
-#define DRV_MODE
+//#define DRV_MODE
 #ifdef DRV_MODE
+#include "Game.hpp"
 /* TODO */
 #include "Driver.hpp"
 #endif
@@ -115,7 +116,9 @@ ULONG_PTR GetBase() {
 		hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, procId);
 		base = (ULONG_PTR)GetModuleBaseAddress(hProcess);
 #endif
-		printf("Process Base: %p\n", base);
+		DWORD64 bBase = 0;
+		ReadProcessMemoryCallback(hProcess, (LPCVOID)base, &bBase, 8, NULL);
+		printf("%i Process Base: %p / %p\n",procId, base,bBase);
 	}
 	else if (hProcess) {
 		DWORD nExit;
@@ -159,18 +162,19 @@ bool Write(ULONG_PTR ptr, T val) {
 }
 template <class T = LPVOID>
 T Read(LPVOID ptr) {
-	T out;
+	T out = T();
 	ReadProcessMemoryCallback(hProcess, ptr, &out, sizeof(T), NULL);
 	return out;
 }
 template <class T = ULONG_PTR>
 T Read(ULONG_PTR ptr) {
-	T out;
+	T out = T();
 	ReadProcessMemoryCallback(hProcess, (LPVOID)ptr, &out, sizeof(T), NULL);
 	return out;
 }
 template <class T>
 void ReadTo(LPVOID ptr, T* out, int len) {
+	*out = T();
 	ReadProcessMemoryCallback(hProcess, ptr, out, len, NULL);
 }
 #pragma endregion Memory
@@ -379,11 +383,11 @@ public:
 		return UPropertyProxy((ULONG_PTR)obj.Next);
 	}
 	int GetOffset() {
-		return Read<DWORD>(ptr + dwOffOffset);
+		return Read<DWORD>(ptr + UObj_Offsets::dwOffOffset);
 		return obj.Offset;
 	}
 	WORD GetBitMask() {
-		if (UObj_Offsets::dwBitmaskOffset) Read<WORD>((LPBYTE)ptr + UObj_Offsets::dwBitmaskOffset);
+		if (UObj_Offsets::dwBitmaskOffset) return Read<WORD>((LPBYTE)ptr + UObj_Offsets::dwBitmaskOffset);
 		return Read<WORD>((LPBYTE)ptr + offsetof(UBoolProperty, BitMask) + 2);
 	}
 	UPropertyProxy GetInner() {
@@ -475,6 +479,7 @@ bool FindSignature(LPBYTE ptr, int nsize, char* sign, UINT nLen) {
 	return false;
 }
 
+ULONG_PTR gObj = 0;
 void GScan() {
 	MEMORY_BASIC_INFORMATION meminfo = { 0 };
 	ULONG_PTR current = 0x10000;
@@ -494,6 +499,7 @@ void GScan() {
 		}
 		if (meminfo.State == MEM_COMMIT && (meminfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
 		{
+			
 			if (meminfo.RegionSize == 0x10000 && !GNames)
 			{
 				char* bMem = (char*)malloc(0x10000);
@@ -539,7 +545,7 @@ void GScan() {
 	}
 	//GetGObjectsGen();
 
-	ULONG_PTR gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
+	gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
 	ULONG_PTR pGObj = 0;
 	//sprintf_s(msg, 124, "GObj PTR: %p \n", GetGObjects());
 	//OutputDebugStringA(msg);
@@ -549,7 +555,7 @@ void GScan() {
 	}
 	sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
 	OutputDebugStringA(msg);
-	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", GNames, GNames - GetBase(), hProcess);
+	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", hProcess, GNames - GetBase(), GetBase());
 	OutputDebugStringA(msg);
 }
 #pragma endregion UE4
@@ -575,7 +581,7 @@ struct BIT_CHECK {
 	bool b7 : 1;
 	bool b8 : 1;
 };
-BYTE ToggleBitState(ULONG_PTR dwOffset, WORD dwBitmask, bool bState) {
+BYTE SetBitState(ULONG_PTR dwOffset, WORD dwBitmask, bool bState) {
 	BYTE b = Read<BYTE>((LPBYTE)dwOffset);
 	if (dwBitmask == 0xFF01)
 		return bState;
@@ -608,7 +614,7 @@ BYTE ToggleBitState(ULONG_PTR dwOffset, WORD dwBitmask, bool bState) {
 	}
 	return b;
 }
-bool CheckBitState(ULONG_PTR dwOffset, WORD dwBitmask) {
+bool GetBitState(ULONG_PTR dwOffset, WORD dwBitmask) {
 	BYTE b = Read<BYTE>((LPBYTE)dwOffset);
 	if (dwBitmask == 0xFF01)
 		return b;
@@ -659,7 +665,11 @@ std::string GetObjectValue(ULONG_PTR pObj, UPropertyProxy* pProperty, ULONG_PTR 
 	else if (pProperty->IsUIn32()) { sprintf_s(szBuf, 124, "%i", Read<DWORD>((LPBYTE)dwOffset)); return szBuf; }
 	else if (pProperty->IsUInt64()) { sprintf_s(szBuf, 124, "%Ii", Read<DWORD64>((LPBYTE)dwOffset)); return szBuf; }
 	else if (pProperty->IsFloat()) { sprintf_s(szBuf, 124, "%f", Read<float>((LPBYTE)dwOffset)); return szBuf; }
-	else if (pProperty->IsBool()) { sprintf_s(szBuf, 124, "%s", CheckBitState(dwOffset, pProperty->GetBitMask()) ? "true" : "false"); return szBuf; }
+	else if (pProperty->IsBool()) {
+		lParam = pProperty->GetBitMask(); 
+		sprintf_s(szBuf, 124, "%s", GetBitState(dwOffset, pProperty->GetBitMask()) ? "true" : "false"); 
+		return szBuf;
+	}
 
 	else if (pProperty->IsObject()) {
 		UObjectProxy p(Read<ULONG_PTR>((LPBYTE)dwOffset));
@@ -713,7 +723,7 @@ std::string GetObjectValue(ULONG_PTR pObj, UPropertyProxy* pProperty, ULONG_PTR 
 				break;
 			}
 		}
-		sprintf_s(szBuf, 1024, "TArray< %s >(%i)", sPropertyTypeInner.c_str(), buf.Count);
+		sprintf_s(szBuf, 1024, "TArray<%s>(%i)", sPropertyTypeInner.c_str(), buf.Count);
 		std::string sRet = szBuf;
 		sRet.append("{").append(sArray).append("}");
 		return sRet;
@@ -1127,6 +1137,9 @@ std::string GetList() {
 	json j;
 	if (hProcess) {
 		auto e = AActor(Read<ULONG_PTR>(GetBase() + ENGINE_OFFSET)); ;// AActor((ULONG_PTR)GEngine);
+		char msg[124];
+		sprintf_s(msg, 124, "%p / eid: %i\n",e._this, e.GetId());
+		OutputDebugStringA(msg);
 		OutputDebugStringA(e.GetName());
 		OutputDebugStringA(" --- READ ENGINE NAME!!!\n");
 		static FieldCache fGameViewport = FieldCache("GameViewport");
@@ -1196,6 +1209,12 @@ bool LuaInit() {
 		sol::constructors<FieldCache(), FieldCache(const char*)>(),
 		"get", &FieldCache::Get
 		);
+	lua.set_function("ToggleBit", [](WORD nBits, ULONG_PTR dwAddr) {
+		return Write<BYTE>((LPVOID)dwAddr, SetBitState(dwAddr, nBits, !GetBitState(dwAddr, nBits)));
+		});
+	lua.set_function("WriteBit", [](WORD nBits, ULONG_PTR dwAddr, bool bVal) {
+		return Write<BYTE>((LPVOID)dwAddr, SetBitState(dwAddr, nBits, bVal));
+		});
 	lua.set_function("WriteByte", [](ULONG_PTR dwAddr, BYTE bVal) {
 		return Write<BYTE>((LPVOID)dwAddr, bVal);
 		});
@@ -1259,6 +1278,43 @@ bool LuaInit() {
 		}
 		return pRet;
 		});
+
+	lua.set_function(("GetOffset"), [](ULONG_PTR pObj, std::string pText) {
+		DWORD structSize = 0;
+		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
+
+		for (DWORD i = 0; i < vProperty.size(); i++) {
+			auto p = vProperty[i];
+			std::string name = p.GetName();
+			bool bMatch = name == pText;
+			auto dwOffset = p.GetOffset();
+			if (!bMatch && p.IsStruct()) {
+				UClassProxy c = p.GetStruct().As<UClassProxy>();
+				//list properties
+				//TODO: CHECK SUPER
+				UPropertyProxy _f = c.GetChildren().As<UPropertyProxy>();
+
+				while (!bMatch) {
+					if (!_f.IsFunction()) {
+						//check _f name
+						name = p.GetName().append(".").append(_f.GetName());
+						bMatch = name == pText;
+						if (bMatch) {
+							p = _f;
+							dwOffset += _f.GetOffset();
+						}
+					}
+					if (!_f.HasNext()) {
+						break;
+					}
+					_f = _f.GetNext();
+					//break;
+				}
+			}
+			if(bMatch)
+				return dwOffset;
+		}
+		return 0; });
 	lua.set_function(("GetField"), [](ULONG_PTR pObj, std::string pText) {
 		DWORD structSize = 0;
 		auto vProperty = GetProps(UObjectProxy(pObj).GetClass().As<UClassProxy>(), structSize);
@@ -1293,6 +1349,9 @@ bool LuaInit() {
 			}
 			if (bMatch) {
 
+				if (p.IsObject()) {
+					return sol::make_object(lua, Read<DWORD64>((LPBYTE)pObj + dwOffset));
+				}
 				if (p.IsBool()) {
 					return sol::make_object(lua, Read<BYTE>((LPBYTE)pObj + dwOffset));
 				}
@@ -1362,10 +1421,10 @@ bool LuaInit() {
 					//edit bit state
 					//BYTE b = Read<BYTE>((LPBYTE)lastScan + dwOffset);
 					BYTE newB = fVal;// ToggleBitState(lastScan + dwOffset, p.GetBitMask(), bToggle ? !CheckBitState(lastScan + dwOffset, p.GetBitMask()) : Button_GetCheck(hEditCB));
-					//char msg[124];
-					//sprintf_s(msg, 124, "%04X B: %i / %i\n", p.GetBitMask(), b, newB);
-					//OutputDebugStringA(msg);
-					pRet = Write<BYTE>((LPBYTE)pObj + dwOffset, newB);
+					char msg[124];
+					sprintf_s(msg, 124, "%04X B: %i\n", p.GetBitMask(), newB);
+					OutputDebugStringA(msg);
+					pRet = Write<BYTE>(pObj + dwOffset, SetBitState(pObj + dwOffset, p.GetBitMask(), newB));
 				}
 				else if (p.IsByte()) {
 					pRet = Write<BYTE>((LPBYTE)pObj + dwOffset, fVal);
@@ -1650,11 +1709,171 @@ void InitPubGSteam2() {
 	GScan();
 }
 */
-//#include "Game.hpp"
+
+
+#define SIZE_OF_NT_SIGNATURE (sizeof(DWORD))
+#define PEFHDROFFSET(a) (PIMAGE_FILE_HEADER)((LPVOID)((BYTE *)a + ((PIMAGE_DOS_HEADER)a)->e_lfanew + SIZE_OF_NT_SIGNATURE))
+#define SECHDROFFSET(ptr) (PIMAGE_SECTION_HEADER)((LPVOID)((BYTE *)(ptr)+((PIMAGE_DOS_HEADER)(ptr))->e_lfanew+SIZE_OF_NT_SIGNATURE+sizeof(IMAGE_FILE_HEADER)+sizeof(IMAGE_OPTIONAL_HEADER)))
+
+PIMAGE_SECTION_HEADER getCodeSection(LPVOID lpHeader) {
+	PIMAGE_FILE_HEADER pfh = PEFHDROFFSET(lpHeader);
+	if (pfh->NumberOfSections < 1)
+	{
+		return NULL;
+	}
+	PIMAGE_SECTION_HEADER psh = SECHDROFFSET(lpHeader);
+	return psh;
+}
+size_t replace_all(std::string& str, const std::string& from, const std::string& to) {
+	size_t count = 0;
+
+	size_t pos = 0;
+	while ((pos = str.find(from, pos)) != std::string::npos) {
+		str.replace(pos, from.length(), to);
+		pos += to.length();
+		++count;
+	}
+
+	return count;
+}
+
+bool is_hex_char(const char& c) {
+	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F');
+}
+std::vector<int> pattern(std::string patternstring) {
+	std::vector<int> result;
+	const uint8_t hashmap[] = {
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //  !"#$%&'
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ()*+,-./
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // 01234567
+		0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 89:;<=>?
+		0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x00, // @ABCDEFG
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // HIJKLMNO
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // PQRSTUVW
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // XYZ[\]^_
+		0x00, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x00, // `abcdefg
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // hijklmno
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // pqrstuvw
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // xyz{|}~.
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ........
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // ........
+	};
+	replace_all(patternstring, "??", " ? ");
+	replace_all(patternstring, "?", " ?? ");
+	replace_all(patternstring, " ", "");
+	//boost::trim(patternstring);
+	//assert(patternstring.size() % 2 == 0);
+	for (std::size_t i = 0; i < patternstring.size() - 1; i += 2) {
+		if (patternstring[i] == '?' && patternstring[i + 1] == '?') {
+			result.push_back(0xFFFF);
+			continue;
+		}
+		//assert(is_hex_char(patternstring[i]) && is_hex_char(patternstring[i + 1]));
+		result.push_back((uint8_t)(hashmap[patternstring[i]] << 4) | hashmap[patternstring[i + 1]]);
+	}
+	return result;
+}
+
+std::vector<std::size_t> find_pattern(const uint8_t* data, std::size_t data_size, const std::vector<int>& pattern) {
+	// simple pattern searching, nothing fancy. boyer moore horsepool or similar can be applied here to improve performance
+	std::vector<std::size_t> result;
+	for (std::size_t i = 0; i < data_size - pattern.size() + 1; i++) {
+		std::size_t j;
+		for (j = 0; j < pattern.size(); j++) {
+			if (pattern[j] == 0xFFFF) {
+				continue;
+			}
+			if (pattern[j] != data[i + j]) {
+				break;
+			}
+		}
+		if (j == pattern.size()) {
+			result.push_back(i);
+		}
+	}
+	return result;
+}
+std::vector<std::size_t> AOBScan(std::string str_pattern) {
+	std::vector<std::size_t> ret;
+	HANDLE hProc = hProcess;
+
+	ULONG_PTR dwStart = GetBase();
+
+	LPVOID lpHeader = malloc(0x1000);
+	ReadProcessMemoryCallback(hProc, (LPCVOID)dwStart, lpHeader, 0x1000, NULL);
+
+	DWORD delta = 0x1000;
+	LPCVOID lpStart = 0; //0
+	DWORD nSize = 0;// 0x548a000;
+
+	PIMAGE_SECTION_HEADER SHcode = getCodeSection(lpHeader);
+	if (SHcode) {
+		nSize = SHcode->Misc.VirtualSize;
+		delta = SHcode->VirtualAddress;
+		lpStart = ((LPBYTE)dwStart + delta);
+	}
+	if (nSize) {
+		LPVOID lpCodeSection = malloc(nSize);
+		ReadProcessMemoryCallback(hProc, lpStart, lpCodeSection, nSize, NULL);
+
+		//sprintf_s(szPrint, 124, "Size: %i / Start:%p / Base: %p", nSize, dwStart,lpStart);
+		//MessageBoxA(0, szPrint, szPrint, 0);
+		//
+		auto res = find_pattern((const uint8_t*)lpCodeSection, nSize, pattern(str_pattern.c_str()));
+		ret = res;
+		for (UINT i = 0; i < ret.size(); i++) {
+			ret[i] += delta;
+		}
+
+		free(lpCodeSection);
+	}
+	else {
+		printf("bad .code section.\n");
+	}
+	free(lpHeader);
+
+
+	return ret;
+}
+DWORD DoScan(std::string pattern, DWORD offset = 0, DWORD base_offset = 0, DWORD pre_base_offset = 0, DWORD rIndex = 0) {
+	//ULONG_PTR dwBase = (DWORD_PTR)GetModuleHandleW(NULL);
+	auto r = AOBScan(pattern);
+	if (!r.size())
+		return 0;
+	//char msg[124];
+	//sprintf_s(msg,124,"%s ret %i\n",pattern.c_str(),r.size() );
+	//OutputDebugStringA(msg);
+	DWORD ret = r[rIndex] + pre_base_offset;
+	if (offset == 0) {
+		return ret + base_offset;
+	}
+	ret = ret + Read<DWORD>((LPBYTE)GetBase() + ret + offset) + base_offset;
+	//ret = ret + *(DWORD*)(dwBase + ret + offset) + base_offset;
+	return ret;
+}
+
 void InitLastOasis() {
 	UObj_Offsets::dwPropSize = 0x50;
 	UObj_Offsets::dwSizeOffset = 0x30;//?
-	dwOffOffset = 0x44;
+	UObj_Offsets::dwOffOffset = 0x44;
 	UObj_Offsets::dwActorsList = 0x98;//
 	UObj_Offsets::dwChildOffset = 0x68;//
 	UObj_Offsets::dwSuperClassOffset2 = 0x40;
@@ -1662,8 +1881,10 @@ void InitLastOasis() {
 	base = 0;
 	sWndFind = L"Last Oasis  ";
 	ENGINE_OFFSET = 0x3DC1A98; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
-	DWORD FNAME_POOL = 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
 	GetBase();
+
+	DWORD FNAME_POOL = 0x3CAB400;// DoScan("74 09 48 8D 15 ?? ?? ?? ?? EB 16", 3, 7, 2);// 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
+
 	GScan();
 	fNamePool = GetBase()+FNAME_POOL;
 	printf("pEng: %p\n", Read(GetBase()+ENGINE_OFFSET));
@@ -1678,12 +1899,45 @@ void InitBorderlands3() {
 	GetBase();
 	GScan();
 }
+
+void VerifyOffsets() {
+	//first lets verify SuperClass
+	UObjectProxy p(Read(GetBase() + ENGINE_OFFSET));
+	auto c = p.GetClass().As<UClassProxy>();
+	auto pEngSuperName = c.GetSuperClass().GetName();
+	printf("[*] SuperClass: %s\n", pEngSuperName.c_str());
+	//find C_SemiSolidWire
+	auto pProp = c.GetSuperClass().GetSuperClass().GetChildren().As<UPropertyProxy>().GetNext();
+	while (pProp.ptr && pProp.GetName() != "C_SemiSolidWire") {
+		pProp = pProp.GetNext();
+	}
+
+	if (pProp.GetOffset() <= 0x30) {
+		printf("bad offset?\n");
+		UObj_Offsets::dwOffOffset += 4;
+	}
+	printf("Got Offset! %04X\n", UObj_Offsets::dwOffOffset);
+	auto pInner = pProp.GetInner();
+	while (pInner.GetName() != "Color") {
+		printf("bad inner?\n");
+		UObj_Offsets::dwInnerOffset += 8;
+		pInner = pProp.GetInner();
+	}
+	printf("Got inner! %04X\n", UObj_Offsets::dwInnerOffset);
+	//verify inner
+}
+
+
+
 int main() {
 	LuaInit();
 	InitLastOasis();
 	//InitBorderlands3();
 	//InitPubGSteam();
+	//VerifyOffsets();
+
 	std::thread t = StartWebServer();
+	OutputDebugStringA(CNames::GetName(0));
 
 	//Here we are using PubG Steam as PoC but it should work for any UE4 Game.
 	t.join();

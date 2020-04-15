@@ -66,7 +66,52 @@ th.active .arrow {
     .tr-odd {
     background-color: #f7f7f7;
     }
+    
+    
+#context-menu {
+  display: none;
+  position: absolute;
+}
+#context-menu ul{
+  list-style: none;
+    
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  display: none;
+  list-style: none;
+  position: absolute;
+  z-index: 2147483647;
+  background-color: white;
+  border: 1px solid #ebebeb;
+  border-bottom-width: 0px;
+  list-style: none;
+}
+
+#context-menu ul.active {
+  display: block;
+}
+
+.context-menu-icon {
+  top: 1px;
+  position: relative;
+  margin-right: 10px;
+}
+
+.context-menu-item {
+  display: flex;
+  cursor: pointer;
+  padding: 8px 15px;
+  align-items: center;
+  border-bottom: 1px solid #ebebeb;
+}
+
+.context-menu-item:hover {
+  background-color: #ebebeb;
+}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
 <textarea id="script_area" name="script_area"
           rows="8" cols="120">
     WSLog(string.format('%X good',GetEngine()))</textarea>
@@ -92,7 +137,7 @@ th.active .arrow {
       </tr>
     </thead>
     <tbody>
-      <tr v-for="(entry,index) in filteredHeroes" :class="index%2?'tr-even':'tr-odd'" @dblclick="greet(entry)">
+      <tr @contextmenu.prevent="showContextMenu($event,entry)" v-for="(entry,index) in filteredHeroes" :class="index%2?'tr-even':'tr-odd'" @dblclick="greet(entry)">
       
         <td v-for="key in columns">
         {{translate(entry,key)}}
@@ -104,9 +149,9 @@ th.active .arrow {
     </tbody>
   </table>
 </script>
-
 <!-- demo root element -->
 <div id="demo">
+
   <form id="search">
     Search <input name="query" v-model="searchQuery">
   </form>
@@ -133,13 +178,43 @@ th.active .arrow {
     :columns="gridColumns"
     :filter-key="searchQuery">
   </demo-grid>
+    
+  <div id="context-menu" class="dropdown clearfix">
+    <ul class="dropdown-menu" role="menu" style="display:block;position:static;margin-bottom:5px;">
+      <li class="context-menu-item" @click="doToggle"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Toggle
+      </li>
+    </ul>
+  </div>
 </div>
 <script
   src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
   integrity="sha256-pasqAKBDmFT4eHoN2ndd6lN370kFiGUFyTiUHWhU7k8="
   crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
 <script>
+    $(function() {
+
+    var $contextMenu = $("#context-menu");
+
+   /* $("body").on("contextmenu", "table tr", function(e) {
+         $contextMenu.css({
+              display: "block",
+              left: e.pageX,
+              top: e.pageY
+         });
+        //debugger;
+         return false;
+    });*/
+
+    $('html').click(function() {
+         $contextMenu.hide();
+    });
+  
+  $("#contextMenu li a").click(function(e){
+    var  f = $(this);
+    //debugger;
+  });
+
+});
 // register the grid component
 Vue.component('demo-grid', {
   template: '#grid-template',
@@ -154,6 +229,8 @@ Vue.component('demo-grid', {
       sortOrders[key] = 1
     })
     return {
+    contextMenuWidth: null,
+    contextMenuHeight: null,
       componentKey: 0,
       sortKey: '',
       sortOrders: sortOrders
@@ -188,22 +265,38 @@ Vue.component('demo-grid', {
     }
   },
   methods: {
+    showContextMenu: (e,entry) => {
+        
+        if(entry.lParam == undefined) return;
+        document.demo.$children[0].entry = entry;
+        var $contextMenu = $("#context-menu");
+
+         $contextMenu.css({
+              display: "block",
+              left: e.pageX,
+              top: e.pageY
+         });
+    },
     forceRerender() {
       this.componentKey += 1;  
     },handleBlur(entry,event) {
         var val = event.target.value;
         var ptr = parseInt(document.demo2.goPtr)+entry.offset;
         var fnc = '';
-        if(entry.type == 'FloatProperty') fnc = 'WriteFloat';
-        else if(entry.type == 'StrProperty') fnc = 'WriteUEStr';
-        else if(entry.type == 'IntProperty') fnc = 'WriteInt';
-        else if(entry.type == 'BoolProperty') fnc = 'WriteByte';
-        else if(entry.type == 'ByteProperty') {
+        if(entry.type == 'FloatProperty') fnc = 'WriteFloat(';
+        else if(entry.type == 'StrProperty') fnc = 'WriteUEStr(';
+        else if(entry.type == 'IntProperty') fnc = 'WriteInt(';
+        else if(entry.type == 'BoolProperty') {
             val = JSON.parse(val);//trick to get 1 or 0
-            fnc = 'WriteByte';
+            fnc = 'WriteBit('+entry.lParam+',';
+            console.log(entry);
+        }
+        else if(entry.type == 'ByteProperty') {
+            val = parseInt(JSON.parse(val));//trick to get 1 or 0
+            fnc = 'WriteByte(';
         }
         
-        var str = fnc+'(0x'+ptr.toString(16)+','+val+')';
+        var str = fnc+'0x'+ptr.toString(16)+','+val+')';
         console.log(str);
         connection.send('do_script '+str);
         entry.edit = false;
@@ -293,6 +386,20 @@ document.demo2 = new Vue({
         }
     },
   methods: {
+      doToggle() {
+        var entry = document.demo.$children[0].entry;
+          console.log(entry);
+        var ptr = parseInt(document.demo2.goPtr)+entry.offset;
+      console.log('Toggle',entry);
+        if(entry.type == 'BoolProperty') {
+            fnc = 'ToggleBit('+entry.lParam+',';
+
+            entry.val = entry.val=='false';
+            var str = fnc+'0x'+ptr.toString(16)+')';
+            connection.send('do_script '+str);
+            document.demo2.$children[0].forceRerender();
+            }
+      },
       hex: function(ptr) {
           return '0x'+ptr.toString(16).toUpperCase();
       },
