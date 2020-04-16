@@ -974,7 +974,7 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	_j["data"] = j;
 
 	auto ret = _j.dump();
-	OutputDebugStringA(ret.c_str());
+	//OutputDebugStringA(ret.c_str());
 	return ret;
 
 }
@@ -1008,8 +1008,8 @@ bool FindProp(ULONG_PTR pObj, std::string pText, UPropertyProxy& out) {
 					name = p.GetName().append(".").append(_f.GetName());
 					bMatch = name == pText;
 					if (bMatch) {
-						out = _f;
-						return true;
+						p = _f;
+						break;
 					}
 				}
 				if (!_f.HasNext()) {
@@ -1019,7 +1019,12 @@ bool FindProp(ULONG_PTR pObj, std::string pText, UPropertyProxy& out) {
 				//break;
 			}
 		}
+		if (bMatch) {
+			out = p;
+			return true;
+		}
 	}
+
 	return false;
 }
 
@@ -1826,9 +1831,9 @@ void VerifyOffsets() {
 
 int main() {
 	LuaInit();
-	InitLastOasis();
+	//InitLastOasis();
 	//InitBorderlands3();
-	//InitPubGSteam();
+	InitPubGSteam();
 	//VerifyOffsets();
 
 	std::thread t = StartWebServer();

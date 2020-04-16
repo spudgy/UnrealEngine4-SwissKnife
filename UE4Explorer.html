@@ -113,11 +113,11 @@ th.active .arrow {
 </style>
 <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
 <textarea id="script_area" name="script_area"
-          rows="8" cols="120">
+          rows="8" cols="100">
     WSLog(string.format('%X good',GetEngine()))</textarea>
 
 <textarea id="log_area" name="log_area"
-          rows="8" cols="120" disabled>Log..&#13;&#10;</textarea>
+          rows="8" cols="100" disabled>Log..&#13;&#10;</textarea>
 <br>
 <button onclick="SendScript()">Send</button>
 <span class="state">Hello Script Component!</span>
@@ -167,7 +167,17 @@ th.active .arrow {
     Search <input name="query" v-model="searchQuery">
   </form>
       
-    <div><input id="ptr"/ :value="hex(goPtr)"> <button onclick="DoX()">Scan Object</button> | <input type="checkbox" id="refreshCb" @click="cbRefresh($event)"/> <label for="refreshCb">Auto Refresh every </label><input id="refreshMs" value="1000"/>ms. | <input type="checkbox" id="refreshTimerCb"/> <label for="refreshTimerCb">Keep refresh prop for </label><input id="refreshKeepMs" value="5000"/>ms.</div>
+    <div><input id="ptr"/ :value="hex(goPtr)"> <button onclick="DoX()">Scan Object</button> | <input type="checkbox" id="refreshCb" @click="cbRefresh($event)"/> <label for="refreshCb">Auto Refresh every </label><input id="refreshMs" value="1000"/>ms. | <input type="checkbox" id="refreshTimerCb"/> <label for="refreshTimerCb">Keep refresh prop for </label><input id="refreshKeepMs" value="5000"/>ms.<br>
+        <template v-for="(bc,i) in bcList">
+            <template v-if="i+1< bcList.length">
+            <span @dblclick="bcGetInfo(bc)">{{bc.name}}</span> > 
+            </template>
+            <template v-else>
+                <b><span @dblclick="bcGetInfo(bc)">{{bc.name}}</span></b>
+            </template>
+        </template><br>
+    Tabs: {{tabs}}<br>
+    </div>
   <demo-grid ref="diffProps"
     :heroes="mdiffData"
     :columns="gridColumns"
@@ -181,7 +191,9 @@ th.active .arrow {
     
   <div id="context-menu" class="dropdown clearfix">
     <ul class="dropdown-menu" role="menu" style="display:block;position:static;margin-bottom:5px;">
-      <li class="context-menu-item" @click="doToggle"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Toggle
+      <li class="context-menu-item toggleItem" @click="doToggle"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Toggle
+      </li>
+      <li class="context-menu-item" @click="doTab"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Open Tab
       </li>
     </ul>
   </div>
@@ -266,9 +278,11 @@ Vue.component('demo-grid', {
   },
   methods: {
     showContextMenu: (e,entry) => {
-        
-        if(entry.lParam == undefined) return;
+        //console.log('x');
+        //if(entry.lParam == undefined) return;
         document.demo.$children[0].entry = entry;
+        if(entry.type == 'BoolProperty') $('.toggleItem').show();
+        else $('.toggleItem').hide();
         var $contextMenu = $("#context-menu");
 
          $contextMenu.css({
@@ -304,12 +318,13 @@ Vue.component('demo-grid', {
               this.forceRerender();
     },
       greet: function (entry) {
-          console.log(entry);
+          console.log('greet',entry);
           if(entry.addr) {
               //document.demo2.goPtr = entry.addr;
                 connection.send('get_info '+entry.addr)
               console.log('get info..');
-              
+              //restart breadcrumbs
+              document.demo2.bcList = [];
           } else if(entry.lParam > 0 && (entry.type == 'ObjectProperty' || entry.type == 'ArrayProperty')) {
               //this.$parent.goPtr = entry.lParam;
                 connection.send('get_info '+entry.lParam) 
@@ -369,6 +384,9 @@ document.demo2 = new Vue({
   el: '#demo2',
   data: {
       goPtr: 0,
+      bcList: [],
+      tabs: [],
+      objName: null,
     searchQuery: '',
     gridColumns: ['offset', 'name','type','val'],
     gridData: [
@@ -386,6 +404,17 @@ document.demo2 = new Vue({
         }
     },
   methods: {
+      doTab() {
+        var entry = document.demo.$children[0].entry;
+          console.log(entry);
+        if(entry.addr>0) {
+            document.demo2.tabs.push(entry.addr);
+        } else if(entry.type == 'ObjectProperty') {
+         //add to tabs..
+            document.demo2.tabs.push(entry.lParam);
+        }
+        
+      },
       doToggle() {
         var entry = document.demo.$children[0].entry;
           console.log(entry);
@@ -399,6 +428,19 @@ document.demo2 = new Vue({
             connection.send('do_script '+str);
             document.demo2.$children[0].forceRerender();
             }
+      },
+      bcGetInfo(bc) {
+          connection.send('get_info '+bc.ptr);
+          this.bcList.length = bc.idx;
+      },
+      breadcrumbs() {
+          var ret = '';
+            for(var i = 0; i < this.bcList.length;i++) {
+                var bc = this.bcList[i];
+                if(i>0) ret += ' > ';
+                ret+= '<a onclick="x">'+bc.name+'</a>';
+            }
+          return ret;
       },
       hex: function(ptr) {
           return '0x'+ptr.toString(16).toUpperCase();
@@ -445,8 +487,8 @@ connection.onerror = (error) => {
 }
 
 connection.onmessage = (e) => {
-    console.log(e);
     var j = JSON.parse(e.data);
+    console.log(j);
     if(j.type == 'log') {
         var oneDiv = $("#log_area");
         $('#log_area').append(j.log+'\n');
@@ -466,7 +508,12 @@ connection.onmessage = (e) => {
                     j.data.info[i].diffTimer = oldInfo[i].diffTimer;
                 }
             }
+            if(document.demo2.bcList.length == 0) document.demo2.bcList.push({idx:document.demo2.bcList.length,ptr:j.data.ptr,name:j.data.name});
+        } else {
+            //add to jptr
+            document.demo2.bcList.push({idx:document.demo2.bcList.length,ptr:j.data.ptr,name:j.data.name});
         }
+        document.demo2.objName = j.data.name;
         document.demo2.goPtr = j.data.ptr;
         document.demo2.gridData = j.data.info;
         //..
