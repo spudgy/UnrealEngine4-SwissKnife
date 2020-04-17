@@ -110,18 +110,29 @@ th.active .arrow {
 .context-menu-item:hover {
   background-color: #ebebeb;
 }
+    
+    #editor { 
+        float:left;
+        width: 680px;
+        height: 320px;
+    }
+    .clearfix {
+  overflow: auto;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
-<textarea id="script_area" name="script_area"
-          rows="8" cols="100">
-    WSLog(string.format('%X good',GetEngine()))</textarea>
 
-<textarea id="log_area" name="log_area"
-          rows="8" cols="100" disabled>Log..&#13;&#10;</textarea>
+<div>
+<div id="editor" >    WSLog(string.format('%X good',GetEngine()))</div>
+<textarea style="float:left; margin-left: 10px;" id="log_area" name="log_area"
+          rows="21" cols="100" disabled>Log..&#13;&#10;</textarea>
+<div style="clear: both;"></div>
+<br>
 <br>
 <button onclick="SendScript()">Send</button>
 <span class="state">Hello Script Component!</span>
 <br><br>
+    </div>
 <!-- component template -->
 <script type="text/x-template" id="grid-template">
   <table :key="componentKey" >
@@ -202,6 +213,14 @@ th.active .arrow {
   src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
   integrity="sha256-pasqAKBDmFT4eHoN2ndd6lN370kFiGUFyTiUHWhU7k8="
   crossorigin="anonymous"></script>
+<script src="https://pagecdn.io/lib/ace/1.4.5/ace.js" integrity="sha256-5Xkhn3k/1rbXB+Q/DX/2RuAtaB4dRRyQvMs83prFjpM=" crossorigin="anonymous"></script>
+<script>
+    
+    var editor = ace.edit("editor");
+    document.editor = editor;
+    editor.setTheme("ace/theme/monokai");
+    editor.session.setMode("ace/mode/lua");
+</script>
 <script>
     $(function() {
 
@@ -457,7 +476,9 @@ document.demo2 = new Vue({
 
 <script>
     function SendScript() {
-        connection.send('do_script '+$('#script_area').val());
+        var code = document.editor.getValue();
+        console.log(code);
+        connection.send('do_script '+code);
     }
     function DoX() {
         connection.send('get_info '+parseInt($('#ptr').val(),16)) 

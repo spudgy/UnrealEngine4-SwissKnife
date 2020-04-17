@@ -193,13 +193,14 @@ const char* GetNameFromFName(int key)
 	DWORD chunkOffset = ((int)(key) >> 16); // Block
 	WORD nameOffset = key;
 
-	if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
+	//if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
 
-	//printf("chunk %i / %i ", chunkOffset,nameOffset);
+	//printf("%i chunk %i / %i \n",key, chunkOffset,nameOffset);
 	// The first chunk/shard starts at 0x10, so even if chunkOffset is zero, we will start there.
 	auto namePoolChunk = Read(fNamePool + ((chunkOffset + 2) * 8));
 	auto entryOffset = namePoolChunk + (DWORD)(2 * nameOffset);
 	WORD nameLength = Read<WORD>(entryOffset) >> 6;
+	//printf("len: %i / %i / %p / %p - ", nLen,nameLength, entryOffset, namePoolChunk);
 	if (nameLength > 256)nameLength = 255;
 	static char cBuf[256];
 	ReadTo((LPBYTE)entryOffset + 2, cBuf, nameLength);
@@ -559,7 +560,7 @@ void GScan() {
 	}
 	//sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
 	//OutputDebugStringA(msg);
-	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", hProcess, GNames - GetBase(), GetBase());
+	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", GNames, GNames - GetBase(), GetBase());
 	OutputDebugStringA(msg);
 }
 #pragma endregion UE4
@@ -1097,7 +1098,7 @@ DWORD64 FindObject(LPCSTR name, DWORD dwFlag = 0) {
 	DWORD64 pArray = Read(gObj);
 	for (DWORD i = 0; i < 9; i++) {
 		DWORD64 pObjArr = Read(pArray + (8 * i));
-		printf("read %p\n", pObjArr);
+		//printf("read %p\n", pObjArr);
 		if (!pObjArr) break;
 		FUObjectItem* fuObject = (FUObjectItem*)pObjArr;
 		for (auto i = 0; i < 0x10000; ++i, ++fuObject) {
@@ -1810,10 +1811,10 @@ void InitLastOasis() {
 	hProcess = NULL;
 	base = 0;
 	sWndFind = L"Last Oasis  ";
-	ENGINE_OFFSET = 0x3DC1A98; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
+	ENGINE_OFFSET = 0x3dc2c18; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
 	GetBase();
 
-	DWORD FNAME_POOL = 0x3CAB400;// DoScan("74 09 48 8D 15 ?? ?? ?? ?? EB 16", 3, 7, 2);// 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
+	DWORD FNAME_POOL = 0x3cac580;// DoScan("74 09 48 8D 15 ?? ?? ?? ?? EB 16", 3, 7, 2);// 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
 
 	GScan();
 	fNamePool = GetBase()+FNAME_POOL;
@@ -1859,12 +1860,27 @@ void VerifyOffsets() {
 
 
 #include "Game.hpp"
-
+void InitDeadSide() {
+	hProcess = NULL;
+	base = 0;
+	sWndFind = L"Deadside  ";
+	ENGINE_OFFSET = 0x36F7CB0;
+	fNamePool = Read(GetBase() + 0x3571338)-0x10;
+	//printf("namepool: %p\n",fNamePool);
+	UObj_Offsets::dwActorsList = 0x98;//
+	UObj_Offsets::dwPropSize = 0x50;
+	UObj_Offsets::dwChildOffset = 0x48;//
+	UObj_Offsets::dwSuperClassOffset2 = 0x40;//
+	GetBase();
+	GScan();
+	//VerifyOffsets();
+}
 int main() {
 	LuaInit();
 	//InitLastOasis();
 	//InitBorderlands3();
-	InitPubGSteam();
+	//InitPubGSteam();
+	InitDeadSide();
 	//VerifyOffsets();
 	std::thread t = StartWebServer();
 	OutputDebugStringA(CNames::GetName(0));
