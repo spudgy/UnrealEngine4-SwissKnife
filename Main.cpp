@@ -794,7 +794,7 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 		//print size
 		std::string className = c.GetName();
 
-		//OutputDebugStringA(className.c_str());
+		OutputDebugStringA(className.c_str());
 		if (!c.HasChildren()) {
 			c = c.GetSuperClass();
 			continue;
@@ -802,8 +802,8 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 		//list properties
 		UPropertyProxy f = c.GetChildren().As<UPropertyProxy>();
 		while (1) {
-			//OutputDebugStringA(f.GetName().c_str());
-			//OutputDebugStringA("\n");
+			OutputDebugStringA(f.GetName().c_str());
+			OutputDebugStringA("\n");
 			if (!f.IsFunction()) {
 				vProperty.push_back(f);
 			}
@@ -1577,65 +1577,6 @@ inline DWORD64 __ROL8__(DWORD64 value, int count) { return __ROL__((DWORD64)valu
 #define WORD1(x)   WORDn(x,  1)
 #define WORD2(x)   WORDn(x,  2)         // third word of the object, unsigned
 
-/* MOVED TO GAME.HPP
-
-void InitPubGSteam2() {
-	hProcess = NULL;
-	base = 0;
-	sWndFind = L"PLAYERUNKNOWN'S BATTLEGROUNDS ";
-	NAME_CHUNK = 0x3FC0;
-	dwOffOffset = 0x58;
-	ENGINE_OFFSET = 0x738D8A0;
-		//set x
-		UObj_Offsets::dwSuperClassOffset2 = 0x0C0;
-	UObj_Offsets::dwSizeOffset = 0x38;//?
-	UObj_Offsets::dwStructOffset = 0x50;//?
-
-	UObj_Offsets::dwInnerOffset = 0x80;//?
-	DWORD dwPropSize = 0x60;//?
-	UObj_Offsets::dwChildOffset = 0x50;//?
-	UObj_Offsets::dwNextOffset = 0x30;//?
-
-
-#define NAME_OFF 0x0008
-#define NAME_XOR 0x5A66C079
-#define NAME_XOR2 0xD53CD882
-#define NAME_BROR 0x0000
-#define NAME_KEY 0x000C
-#define CLASS_OFF 0x010
-#define ClassXor1 0x38820DBDDF70FCFE
-#define ClassXor2 0xD25F1A4D72264028
-#define ClassShift 0
-#define ClassXorKey 0x0000000000000002
-
-	getIdFnc = [](ULONG_PTR _this) {
-		//18-05
-		DWORD dw1 = Read<DWORD>((LPBYTE)_this + NAME_OFF);
-		DWORD r1 = (NAME_BROR ? __ROR4__ : __ROL4__)(dw1 ^ NAME_XOR, NAME_KEY);
-		DWORD v1 = r1;
-		r1 = v1 ^ ((r1 << 0x10) ^ NAME_XOR2);
-		return r1;
-	};
-	getClassFnc = [](ULONG_PTR _this) {
-		DWORD64 pVal = Read<DWORD64>((LPBYTE)_this + CLASS_OFF);
-		ULONG_PTR UObjectVariable_ROL8 = (ClassXorKey) ? (ClassShift ? __ROR8__ : __ROL8__)(pVal ^ ClassXor1, ClassXorKey) : pVal ^ ClassXor1;
-		auto ret = (UObjectVariable_ROL8 ^ (UObjectVariable_ROL8 << 32) ^ ClassXor2);
-		return ret;
-	};
-
-	getEncObjFnc = [](ULONG_PTR v4) { //RootComponent..
-		return 0;//TODO
-	};
-	getSuperClassFnc = [](ULONG_PTR _this) {
-		return 0;//TODO
-	};
-	getActorsFnc = [](ULONG_PTR _this) {
-		return 0;//TODO
-	};
-	GetBase();
-	GScan();
-}
-*/
 
 
 #define SIZE_OF_NT_SIGNATURE (sizeof(DWORD))
@@ -1801,36 +1742,6 @@ DWORD DoScan(std::string pattern, DWORD offset = 0, DWORD base_offset = 0, DWORD
 	return ret;
 }
 
-void InitLastOasis() {
-	UObj_Offsets::dwPropSize = 0x50;
-	UObj_Offsets::dwSizeOffset = 0x30;//?
-	UObj_Offsets::dwOffOffset = 0x44;
-	UObj_Offsets::dwActorsList = 0x98;//
-	UObj_Offsets::dwChildOffset = 0x68;//
-	UObj_Offsets::dwSuperClassOffset2 = 0x40;
-	hProcess = NULL;
-	base = 0;
-	sWndFind = L"Last Oasis  ";
-	ENGINE_OFFSET = 0x3dc2c18; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
-	GetBase();
-
-	DWORD FNAME_POOL = 0x3cac580;// DoScan("74 09 48 8D 15 ?? ?? ?? ?? EB 16", 3, 7, 2);// 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
-
-	GScan();
-	fNamePool = GetBase()+FNAME_POOL;
-	printf("pEng: %p\n", Read(GetBase()+ENGINE_OFFSET));
-	GetList();
-}
-void InitBorderlands3() {
-
-	hProcess = NULL;
-	base = 0;
-	sWndFind = L"Borderlands® 3  ";
-	ENGINE_OFFSET = 0x6A09A08; //48 8B 88 ?? ?? 00 00 48 85 C9 74 3F, -7
-	GetBase();
-	GScan();
-}
-
 void VerifyOffsets() {
 	//first lets verify SuperClass
 	UObjectProxy p(Read(GetBase() + ENGINE_OFFSET));
@@ -1858,11 +1769,27 @@ void VerifyOffsets() {
 	//verify inner
 }
 
+void InitLastOasis() {
+	UObj_Offsets::dwPropSize = 0x50;
+	UObj_Offsets::dwSizeOffset = 0x30;//?
+	UObj_Offsets::dwOffOffset = 0x44;
+	UObj_Offsets::dwActorsList = 0x98;//
+	UObj_Offsets::dwChildOffset = 0x68;//
+	UObj_Offsets::dwSuperClassOffset2 = 0x40;
+	sWndFind = L"Last Oasis  ";
+	ENGINE_OFFSET = 0x3dc2c18; //48 8B 0D ?? ?? ?? ?? 41 B8 01 00 00 00 0F 28 F3
 
-#include "Game.hpp"
+	DWORD FNAME_POOL = 0x3cac580;// DoScan("74 09 48 8D 15 ?? ?? ?? ?? EB 16", 3, 7, 2);// 0x3CAB400; //74 09 48 8D 15 ?? ?? ?? ?? EB 16
+
+	fNamePool = GetBase()+FNAME_POOL;
+	printf("pEng: %p\n", Read(GetBase()+ENGINE_OFFSET));
+}
+void InitBorderlands3() {
+	sWndFind = L"Borderlands® 3  ";
+	ENGINE_OFFSET = 0x6A09A08; //48 8B 88 ?? ?? 00 00 48 85 C9 74 3F, -7
+}
+
 void InitDeadSide() {
-	hProcess = NULL;
-	base = 0;
 	sWndFind = L"Deadside  ";
 	ENGINE_OFFSET = 0x36F7CB0;
 	fNamePool = Read(GetBase() + 0x3571338)-0x10;
@@ -1871,17 +1798,134 @@ void InitDeadSide() {
 	UObj_Offsets::dwPropSize = 0x50;
 	UObj_Offsets::dwChildOffset = 0x48;//
 	UObj_Offsets::dwSuperClassOffset2 = 0x40;//
+}
+
+
+/* MOVED TO GAME.HPP
+
+void InitPubGSteam2() {
+	hProcess = NULL;
+	base = 0;
+	sWndFind = L"PLAYERUNKNOWN'S BATTLEGROUNDS ";
+	NAME_CHUNK = 0x3FC0;
+	dwOffOffset = 0x58;
+	ENGINE_OFFSET = 0x738D8A0;
+		//set x
+		UObj_Offsets::dwSuperClassOffset2 = 0x0C0;
+	UObj_Offsets::dwSizeOffset = 0x38;//?
+	UObj_Offsets::dwStructOffset = 0x50;//?
+
+	UObj_Offsets::dwInnerOffset = 0x80;//?
+	DWORD dwPropSize = 0x60;//?
+	UObj_Offsets::dwChildOffset = 0x50;//?
+	UObj_Offsets::dwNextOffset = 0x30;//?
+
+
+#define NAME_OFF 0x0008
+#define NAME_XOR 0x5A66C079
+#define NAME_XOR2 0xD53CD882
+#define NAME_BROR 0x0000
+#define NAME_KEY 0x000C
+#define CLASS_OFF 0x010
+#define ClassXor1 0x38820DBDDF70FCFE
+#define ClassXor2 0xD25F1A4D72264028
+#define ClassShift 0
+#define ClassXorKey 0x0000000000000002
+
+	getIdFnc = [](ULONG_PTR _this) {
+		//18-05
+		DWORD dw1 = Read<DWORD>((LPBYTE)_this + NAME_OFF);
+		DWORD r1 = (NAME_BROR ? __ROR4__ : __ROL4__)(dw1 ^ NAME_XOR, NAME_KEY);
+		DWORD v1 = r1;
+		r1 = v1 ^ ((r1 << 0x10) ^ NAME_XOR2);
+		return r1;
+	};
+	getClassFnc = [](ULONG_PTR _this) {
+		DWORD64 pVal = Read<DWORD64>((LPBYTE)_this + CLASS_OFF);
+		ULONG_PTR UObjectVariable_ROL8 = (ClassXorKey) ? (ClassShift ? __ROR8__ : __ROL8__)(pVal ^ ClassXor1, ClassXorKey) : pVal ^ ClassXor1;
+		auto ret = (UObjectVariable_ROL8 ^ (UObjectVariable_ROL8 << 32) ^ ClassXor2);
+		return ret;
+	};
+
+	getEncObjFnc = [](ULONG_PTR v4) { //RootComponent..
+		return 0;//TODO
+	};
+	getSuperClassFnc = [](ULONG_PTR _this) {
+		return 0;//TODO
+	};
+	getActorsFnc = [](ULONG_PTR _this) {
+		return 0;//TODO
+	};
 	GetBase();
 	GScan();
-	//VerifyOffsets();
 }
+*/
+INT64 ActorDec(INT64 v15) //48 63 40 08 41 8B F1 4C 8D 3C C5 00 00 00 00 49 8D 04 3F 49 C1 EF 03 
+{
+	unsigned __int64 v16; // r9
+	__int64 v21; // [rsp+40h] [rbp+18h]
+	v16 = v15 >> 32;
+	LODWORD(v15) = ((unsigned __int16)v15 ^ ((unsigned int)v15 >> 16) | v15 & 0xFFFF0000) - 1629592062;
+	LODWORD(v21) = ((unsigned __int16)v15 ^ ((unsigned int)v15 >> 16) | ((unsigned __int16)__ROR2__(WORD1(v15), 8) << 16)) ^ 0x9EDE6602;
+	LODWORD(v15) = ((unsigned __int16)__ROR2__(v16 ^ WORD1(v16), 8) | ((unsigned __int16)__ROR2__(WORD1(v16), 8) << 16))
+		- 1648255678;
+	HIDWORD(v21) = (v15 & 0xFFFF0000 | (unsigned __int16)__ROR2__(v15 ^ WORD1(v15), 8)) ^ 0x623E62BE;
+	return v21;
+}
+
+void InitPubGLite() {
+	sWndFind = L"PUBG LITE ";
+	ENGINE_OFFSET = 0x4517870;
+	NAME_CHUNK = 0x408C;
+	UObj_Offsets::dwChildOffset = 0x88;//?
+	UObj_Offsets::dwOffOffset = 0x44;
+	UObj_Offsets::dwSizeOffset = 0x30;
+	UObj_Offsets::dwInnerOffset = 0x70;
+	UObj_Offsets::dwStructOffset = 0x128;
+	UObj_Offsets::dwPropSize = 0x70;//
+	UObj_Offsets::dwSuperClassOffset2 = 0x80;
+	getIdFnc = [](ULONG_PTR _this) {
+		auto ID = Read<DWORD>((LPBYTE)_this + 0x0C);
+		auto dId = __ROL4__(ID ^ 0x0F7B20EA6, 0x0E);
+		return  dId ^ (dId << 16) ^ 0x0F914F7B2;
+	};
+
+	getClassFnc = [](ULONG_PTR _this) {
+		DWORD64 pVal = Read<DWORD64>((LPBYTE)_this + 0x18);
+		ULONG_PTR v6 = __ROR8__(pVal ^ 0x470898FB6D10C7AC, 0x1C);
+		return (v6 ^ (v6 << 32) ^ 0x5DE5A22A6289A4F);
+	};
+	getSuperClassFnc = [](ULONG_PTR _this) {
+		DWORD64 pVal = Read<DWORD64>((LPBYTE)_this + UObj_Offsets::dwSuperClassOffset2);
+		ULONG_PTR v6 = __ROL8__(pVal ^ 0x94426FF1A564B5E8, 0x13);
+		return (v6 ^ (v6 << 32) ^ 0x72BCED0738B42294);
+	};
+
+	getActorsFnc = [](ULONG_PTR level) {
+		return ActorDec(Read<ULONG_PTR>(level + 0x260));;//TODO
+	};
+}
+
+
+
+#include "Game.hpp"
+
 int main() {
 	LuaInit();
+
+	hProcess = NULL;
+	base = 0;
+
 	//InitLastOasis();
 	//InitBorderlands3();
 	//InitPubGSteam();
-	InitDeadSide();
+	//InitDeadSide();
+	InitPubGLite();
+
+	GetBase();
+	GScan();
 	//VerifyOffsets();
+
 	std::thread t = StartWebServer();
 	OutputDebugStringA(CNames::GetName(0));
 
