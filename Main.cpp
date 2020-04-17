@@ -487,7 +487,7 @@ ULONG_PTR gObj = 0;
 void GScan() {
 	MEMORY_BASIC_INFORMATION meminfo = { 0 };
 	ULONG_PTR current = 0x10000;
-	FUObjectArray GObj{};
+	//FUObjectArray GObj{};
 	int counter = 0;
 	char msg[124];
 #ifdef DRV_MODE
@@ -549,7 +549,7 @@ void GScan() {
 	}
 	//GetGObjectsGen();
 
-	gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
+	//gObj = (ULONG_PTR)GObj.ObjObjects.Objects;
 	ULONG_PTR pGObj = 0;
 	//sprintf_s(msg, 124, "GObj PTR: %p \n", GetGObjects());
 	//OutputDebugStringA(msg);
@@ -557,8 +557,8 @@ void GScan() {
 		OutputDebugStringA(CNames::GetName(i));
 		OutputDebugStringA("\n");
 	}
-	sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
-	OutputDebugStringA(msg);
+	//sprintf_s(msg, 124, "SCAN GObj PTR: %p \n", gObj);
+	//OutputDebugStringA(msg);
 	sprintf_s(msg, 124, "SCAN GNames PTR: %p / %p / %p \n", hProcess, GNames - GetBase(), GetBase());
 	OutputDebugStringA(msg);
 }
@@ -1092,6 +1092,30 @@ public:
 	}
 };
 
+
+DWORD64 FindObject(LPCSTR name, DWORD dwFlag = 0) {
+	DWORD64 pArray = Read(gObj);
+	for (DWORD i = 0; i < 9; i++) {
+		DWORD64 pObjArr = Read(pArray + (8 * i));
+		printf("read %p\n", pObjArr);
+		if (!pObjArr) break;
+		FUObjectItem* fuObject = (FUObjectItem*)pObjArr;
+		for (auto i = 0; i < 0x10000; ++i, ++fuObject) {
+			UObjectProxy object = Read<FUObjectItem>(fuObject).Object;
+			if (!object.ptr || (dwFlag && dwFlag != object.obj.ObjectFlags)) {
+				continue;
+			}
+			auto objName = CNames::GetName(object.GetId());
+			if (!strcmp(objName, name)) {
+				//OutputDebugStringW(objName);
+				return object.ptr;
+			}
+		}
+	}
+
+	return 0;
+}
+
 class AActor {
 public:
 	ULONG_PTR _this;
@@ -1235,6 +1259,9 @@ bool LuaInit() {
 		});
 	lua.set_function(("ReadF"), [](ULONG_PTR dwAddr) {
 		return Read<float>((LPVOID)dwAddr);
+		});
+	lua.set_function("FindObject", [](LPCSTR objName) {
+		return FindObject(objName);
 		});
 	lua.set_function(("GetEngine"), []() {
 		auto e = AActor(Read<ULONG_PTR>(GetBase() + ENGINE_OFFSET));
@@ -1752,6 +1779,10 @@ std::vector<std::size_t> AOBScan(std::string str_pattern) {
 
 	return ret;
 }
+
+
+
+
 DWORD DoScan(std::string pattern, DWORD offset = 0, DWORD base_offset = 0, DWORD pre_base_offset = 0, DWORD rIndex = 0) {
 	//ULONG_PTR dwBase = (DWORD_PTR)GetModuleHandleW(NULL);
 	auto r = AOBScan(pattern);
@@ -1835,7 +1866,6 @@ int main() {
 	//InitBorderlands3();
 	InitPubGSteam();
 	//VerifyOffsets();
-
 	std::thread t = StartWebServer();
 	OutputDebugStringA(CNames::GetName(0));
 

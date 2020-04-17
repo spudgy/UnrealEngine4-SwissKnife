@@ -75,23 +75,16 @@ public:
 	__int32 SerialNumber2; //0x0010
 };
 
-class TUObjectArray
-{
+class TUObjectArray {
 public:
-	FUObjectItem* Objects;
-	int32_t MaxElements;
-	int32_t NumElements;
+	FUObjectItem* Objects[9];
 };
 
-class FUObjectArray
-{
+class GObjects {
 public:
-	__int32 ObjFirstGCIndex; //0x0000
-	__int32 ObjLastNonGCIndex; //0x0004
-	__int32 MaxObjectsNotConsideredByGC; //0x0008
-	__int32 OpenForDisregardForGC; //0x000C
-
-	TUObjectArray ObjObjects; //0x0010
+	TUObjectArray* ObjectArray;
+	BYTE _padding_0[0xC];
+	DWORD ObjectCount;
 };
 
 struct FPointer
