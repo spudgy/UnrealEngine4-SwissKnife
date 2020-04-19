@@ -1,3 +1,4 @@
+<title>UE4 SwissKnife</title>
 <style>
     #demo,#demo2 {
         float: left;
@@ -164,10 +165,10 @@ th.active .arrow {
 <div id="demo">
 
   <form id="search">
-    Search <input name="query" v-model="searchQuery">
+    Search <input name="query" v-model="searchQuery"> | <input type="checkbox" id="nestCb"><label for="nestCb">Nested List</label>
   </form>
   <demo-grid
-    :heroes="gridData"
+    :heroes="sortGridData"
     :columns="gridColumns"
     :filter-key="searchQuery">
   </demo-grid>
@@ -206,6 +207,8 @@ th.active .arrow {
       </li>
       <li class="context-menu-item" @click="doTab"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Open Tab
       </li>
+        <li class="context-menu-item nestItem" @click="doNest"><img class="context-menu-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MjguOSA1MjguOSI+PHBhdGggZmlsbD0iI2Y5NjkwZSIgZD0iTTMyOSA4OWwxMDcuNSAxMDcuN0wxNjQgNDY5IDU2LjcgMzYxLjYgMzI5IDg5em0xODktMjUuOGwtNDgtNDhjLTE4LjQtMTguNS00OC41LTE4LjUtNjcgMGwtNDYgNDYgMTA3LjUgMTA3LjVMNTE4IDExNWMxNC41LTE0LjIgMTQuNS0zNy40IDAtNTEuOHpNLjQgNTEyLjdjLTIgOC44IDYgMTYuNyAxNC44IDE0LjZsMTIwLTI5TDI3LjUgMzkwLjUuMyA1MTIuNnoiLz48L3N2Zz4=" width="12">Nest Class
+      </li>
     </ul>
   </div>
 </div>
@@ -223,7 +226,9 @@ th.active .arrow {
 </script>
 <script>
     $(function() {
-
+$('#nestCb').change(function() {
+            document.demo.gridData = [...document.demo.gridData];
+});
     var $contextMenu = $("#context-menu");
 
    /* $("body").on("contextmenu", "table tr", function(e) {
@@ -300,8 +305,8 @@ Vue.component('demo-grid', {
         //console.log('x');
         //if(entry.lParam == undefined) return;
         document.demo.$children[0].entry = entry;
-        if(entry.type == 'BoolProperty') $('.toggleItem').show();
-        else $('.toggleItem').hide();
+        if(entry.type == 'BoolProperty') $('.toggleItem').show(); else $('.toggleItem').hide();
+        if($('#nestCb').is(':checked') && entry.nested == true) $('.nestItem').show(); else $('.nestItem').hide();
         var $contextMenu = $("#context-menu");
 
          $contextMenu.css({
@@ -339,6 +344,13 @@ Vue.component('demo-grid', {
       greet: function (entry) {
           console.log('greet',entry);
           if(entry.addr) {
+              if(entry.nested == true) {
+                  //unnest
+                  document.nestCfg[entry.class] = true;
+                  //reload
+                  document.demo.gridData = [...document.demo.gridData];
+                  return;
+              }
               //document.demo2.goPtr = entry.addr;
                 connection.send('get_info '+entry.addr)
               console.log('get info..');
@@ -378,15 +390,67 @@ Vue.component('demo-grid', {
   }
 })
 
+            document.nestCfg = {};
 // bootstrap the demo
 document.demo = new Vue({
   el: '#demo',
   data: {
     searchQuery: '',
-    gridColumns: ['addr', 'name'],
+    gridColumns: ['addr','class', 'name'],
     gridData: [
     ]
-  }
+  },
+    computed: {
+        sortGridData: function() {
+            if(!$('#nestCb').is(':checked'))
+                return this.gridData;
+            var diffData = [...this.gridData];
+            diffData.sort(function(a,b) {
+                if (a.class > b.class) {
+                    return 1;
+                  }
+                  if (a.class < b.class) {
+                    return -1;
+                  }
+                return 0;
+            });
+            
+            var nestCount = {};
+            var lastNest = '';
+            for(var i = 0; i < diffData.length;i++) {
+                var data = diffData[i];
+                var bNest = i+1 < diffData.length ? data.class == diffData[i+1].class || data.class == lastNest : false;
+                if(bNest) {
+                    data.nested = true;
+                    if(typeof nestCount[data.class] == 'undefined') nestCount[data.class] = 1;
+                    else nestCount[data.class] += 1;//parseInt(nestCount[data.class])+1;
+                    //data.name = 'Nest '+nestCount[data.class];
+                }
+                //data.name = 'x';
+                lastNest = data.class;
+            }
+            
+            var ret = [];
+            for(var i = 0; i < diffData.length;i++) {//prune all nested..
+                if(document.nestCfg[diffData[i].class] != 1 && diffData[i].nested == true ) {
+                    while( diffData[i].class == diffData[i+1].class) {
+                        i++;
+                    }
+                    //data.name = 
+                    var obj = jQuery.extend({},diffData[i]);
+                    obj.addr = 'NESTED';
+                    obj.name = 'NESTED ['+nestCount[diffData[i].class]+']';
+                    ret.push( obj);
+                    continue;
+                }
+                ret.push( diffData[i]);
+
+            }
+            return ret;
+            //if nested, only show count
+            return diffData;
+        }
+    }
 })
 
     function doRefresh() {
@@ -423,6 +487,16 @@ document.demo2 = new Vue({
         }
     },
   methods: {
+      doNest() {
+        var entry = document.demo.$children[0].entry;
+              if(entry.nested == true) {
+                  //unnest
+                  document.nestCfg[entry.class] = !document.nestCfg[entry.class];
+                  //reload
+                  document.demo.gridData = [...document.demo.gridData];
+                  return;
+              }
+      },
       doTab() {
         var entry = document.demo.$children[0].entry;
           console.log(entry);
