@@ -832,7 +832,7 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	int iLoops = 0;
 	auto vProperty = GetProps(c, structSize);
 	//sort..
-
+	//printf("struct size: %X\n", structSize);
 	auto _AddItem = [&](std::string type, ULONG_PTR offset, std::string name, std::string  val, ULONG_PTR lParam = 0) {
 		json i;
 		i["type"] = type;
@@ -922,11 +922,15 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 			DWORD dwOffset = f.GetOffset();
 			int size = dwOffset - offset;
 			if (dwOffset > offset) {
+				//printf("missed %X / %i\n", offset, size);
 				_AddItem("UNK", offset, "MISSED", GetHex(size));
 				offset += size;
 				//print missed
+				
 			}
+
 			size = f.GetSize();
+			//printf("not missed %X / %i / %s\n", offset, size, f.GetName().c_str());
 			if (f.IsStruct()) {
 				fnc(f.GetName(),f, ptr, f.GetOffset());
 			}
@@ -1791,8 +1795,8 @@ void InitBorderlands3() {
 
 void InitDeadSide() {
 	sWndFind = L"Deadside  ";
-	ENGINE_OFFSET = 0x36F7CB0;
-	fNamePool = Read(GetBase() + 0x3571338)-0x10;
+	ENGINE_OFFSET = 0x36F7C70;
+	fNamePool = GetBase() + 0x35F9940;
 	//printf("namepool: %p\n",fNamePool);
 	UObj_Offsets::dwActorsList = 0x98;//
 	UObj_Offsets::dwPropSize = 0x50;
@@ -1916,11 +1920,18 @@ int main() {
 	hProcess = NULL;
 	base = 0;
 
+	HWND hWnd = FindWindowA("UnrealWindow", NULL);
+	char cbWndName[MAX_PATH];
+	GetWindowTextA(hWnd, cbWndName, MAX_PATH);
+	printf("Found game: %s\n", cbWndName);
+
 	//InitLastOasis();
 	//InitBorderlands3();
-	//InitPubGSteam();
-	//InitDeadSide();
-	InitPubGLite();
+	if(!strcmp(cbWndName,"Deadside  "))
+		InitDeadSide();
+	else
+		InitPubGSteam();
+	//InitPubGLite();
 
 	GetBase();
 	GScan();
