@@ -209,6 +209,7 @@ __int64 __fastcall dec_prop(__int64 a1, char* a2)
 	v2[result] = 0;
 	return result;
 }*/
+//credits to Tamimego - https://www.unknowncheats.me/forum/valorant/388967-static-name-decryption.html
 using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
@@ -377,6 +378,7 @@ struct FNameEntry {
 	u16 len;
 	u8 data[81];
 };
+#pragma pack(pop)
 
 void InitValorant() {
 

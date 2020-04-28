@@ -1,7 +1,7 @@
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #include "stdafx.h"
 
-//#define UE3
+#define UE3
 
 #include "client_ws.hpp"
 #include "server_ws.hpp"
@@ -837,9 +837,9 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 		//list properties
 		UPropertyProxy f = c.GetChildren().As<UPropertyProxy>();
 		while (1) {
-			char msg[512];
-			sprintf_s(msg, 124, "%p / %s\n",f.ptr,f.GetName().c_str());
-			OutputDebugStringA(msg);
+			//char msg[1024];
+			//sprintf_s(msg, 1024, "%p / %s\n",f.ptr,f.GetName().c_str());
+			//OutputDebugStringA(msg);
 			//OutputDebugStringA("\n");
 			if (!f.IsFunction()) {
 				vProperty.push_back(f);
@@ -1220,7 +1220,7 @@ std::vector<AActor> CWorld::GetActors() {
 
 	//now add x scanner..
 	//loop all levels...
-	if (fLevels.Find(_this)) return v;
+	if (!fLevels.Find(_this)) return v;
 	TArray<ULONG_PTR> lBuf = Read<TArray<ULONG_PTR>>((LPBYTE)_this + fLevels.Find(_this)); //levels..
 
 	ULONG_PTR* lvls = new ULONG_PTR[lBuf.Count];
@@ -2077,6 +2077,10 @@ ULONG_PTR FindTls() {
 		auto hThread = GetFirstThread();
 		ULONG outlen = 0;
 		auto ret = NtQueryInformationThread(hThread, 0, &tbi, sizeof(tbi), &outlen);
+
+		char msg[124];
+		sprintf_s(msg, 124, "%p / %x / ptls: %p / %p\n", hThread, ret,tbi.TebBaseAddress, sizeof(tbi));
+		OutputDebugStringA(msg);
 		if (ret) {
 			//OutputDebugStringA("Bad query!\n");
 			return 0;
@@ -2273,7 +2277,7 @@ void BruteStruct() {
 					//now look
 					UObj_Offsets::dwStructOffset = i;
 
-					sprintf_s(msg, 124, "FOUND STRUCT %04X ptr: %p / %p\n", i, pInner.ptr);
+					sprintf_s(msg, 124, "FOUND STRUCT %04X ptr: %p \n", i, pInner.ptr);
 					OutputDebugStringA(msg);
 					break;
 					//i -= 8;//skip next..
@@ -2311,16 +2315,16 @@ int main() {
 #else
 	if (!wcscmp(cbWndName, L"Deadside  "))
 		InitDeadSide();
-	if (!wcscmp(cbWndName, L"VALORANT  "))
+	else if (!wcscmp(cbWndName, L"VALORANT  "))
 		InitValorant();
 	//else InitPubGSteam();
 	//InitPubGLite();
 #endif
-	BruteStruct();
+	//BruteStruct();
 
 	GetBase();
 	GScan();
-	printf(GetList().c_str());
+	//printf(GetList().c_str());
 	//VerifyOffsets();
 
 	std::thread t = StartWebServer();
