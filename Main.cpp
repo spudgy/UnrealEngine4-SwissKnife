@@ -1,6 +1,8 @@
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #include "stdafx.h"
 
+//#define UE3
+
 #include "client_ws.hpp"
 #include "server_ws.hpp"
 #include <Windows.h>
@@ -56,6 +58,7 @@ std::wstring sWndFind = L"";
 HWND GetPUBGWindowProcessId(__out LPDWORD lpdwProcessId)
 {
 	HWND  hWnd = FindWindowW(NULL, sWndFind.c_str());
+	//wprintf(L"hwnd %p / %s\n", hWnd,sWndFind.c_str());
 	if (hWnd == NULL) {
 		hWnd = FindWindowW(L"UnrealWindow", NULL);
 
@@ -233,7 +236,7 @@ public:
 };
 std::function<int(ULONG_PTR)> getIdFnc;
 std::function<ULONG_PTR(ULONG_PTR)> getClassFnc;
-std::function<ULONG_PTR(ULONG_PTR)> getSuperClassFnc;
+std::function<ULONG_PTR(ULONG_PTR)> getOuterClassFnc;
 std::function<ULONG_PTR(ULONG_PTR)> getEncObjFnc;
 std::function<ULONG_PTR(ULONG_PTR)> getActorsFnc;
 
@@ -247,15 +250,20 @@ public:
 	UProxy() {
 		ptr = 0;
 	}
+	bool operator ==(UProxy &other) {
+		return ptr == other.ptr;
+	}
 	UProxy(ULONG_PTR _ptr) : ptr(_ptr) {
 		ReadTo((LPBYTE)_ptr, &obj, sizeof(obj));
 	}
 	T* GetObject() {
 		return &obj;
 	}
-	int GetId() {
+	DWORD GetId() {
 		if (getIdFnc) return getIdFnc(ptr);
-		return obj.Name.Index;
+
+		return Read<DWORD>(ptr + UObj_Offsets::dwNameIdOffset);
+		//return obj.Name.Index;
 	}
 	std::string GetName() {
 		auto n = CNames::GetName(GetId());
@@ -280,13 +288,13 @@ public:
 	}
 	UProxy GetClass() {
 		if (getClassFnc) return UProxy(getClassFnc(ptr));
-		return UProxy((ULONG_PTR)obj.Class);
+		return UProxy(Read(ptr + UObj_Offsets::dwClassOffset));
 	}
 	bool HasOuter() {
 		return obj.Outer != NULL;
 	}
 	UProxy GetOuter() {
-		if (getSuperClassFnc) return UProxy(getSuperClassFnc(ptr));
+		if (getOuterClassFnc) return UProxy(getOuterClassFnc(ptr));
 
 		return UProxy((ULONG_PTR)obj.Outer);
 	}
@@ -295,14 +303,18 @@ public:
 		return GetClass().GetName() == name;
 	}
 	bool IsMulticastDelegate() { return Is("MulticastDelegateProperty"); }
-	bool IsFunction() { return Is("Function") || Is("ScriptStruct") || Is("DelegateFunction"); }
+	bool IsFunction() { return Is("Function") || Is("ScriptStruct") || Is("DelegateFunction") ||
+		Is("Enum") || Is("Const") //ue3 support
+		; }
 	bool IsStruct() { return Is("StructProperty"); }
 	bool IsFloat() { return Is("FloatProperty"); }
 	bool IsBool() { return Is("BoolProperty"); }
 	bool IsName() { return Is("NameProperty"); }
 	bool IsByte() { return Is("ByteProperty"); }
 	bool IsWeakObject() { return Is("WeakObjectProperty"); }
-	bool IsObject() { return Is("ObjectProperty") || IsWeakObject(); }
+	bool IsObject() { return Is("ObjectProperty") || IsWeakObject() ||
+		Is("ComponentProperty")//ue3 support
+		; }
 	bool IsInt() { return Is("IntProperty"); }
 	bool IsInt8() { return Is("Int8Property"); }
 	bool IsUIn32() { return Is("UInt32Property"); }
@@ -368,6 +380,9 @@ public:
 };
 class UFieldProxy : public UProxy<UField> {
 public:
+	UFieldProxy() : UProxy<UField>() {
+
+	}
 	UFieldProxy(ULONG_PTR _ptr) : UProxy<UField>(_ptr) {
 
 	}
@@ -391,8 +406,12 @@ public:
 		return Read<DWORD>(ptr + UObj_Offsets::dwOffOffset);
 		return obj.Offset;
 	}
-	WORD GetBitMask() {
+	DWORD GetBitMask() {
+#ifdef UE3
+		if (UObj_Offsets::dwBitmaskOffset) return Read<DWORD>((LPBYTE)ptr + UObj_Offsets::dwBitmaskOffset);
+#else
 		if (UObj_Offsets::dwBitmaskOffset) return Read<WORD>((LPBYTE)ptr + UObj_Offsets::dwBitmaskOffset);
+#endif
 		return Read<WORD>((LPBYTE)ptr + offsetof(UBoolProperty, BitMask) + 2);
 	}
 	UPropertyProxy GetInner() {
@@ -423,6 +442,9 @@ public:
 };
 class UClassProxy : public UProxy<UClass> {
 public:
+	UClassProxy() : UProxy<UClass>() {
+
+	}
 	UClassProxy(ULONG_PTR _ptr) : UProxy<UClass>(_ptr) {
 
 	}
@@ -586,7 +608,11 @@ struct BIT_CHECK {
 	bool b7 : 1;
 	bool b8 : 1;
 };
-BYTE SetBitState(ULONG_PTR dwOffset, WORD dwBitmask, bool bState) {
+DWORD SetBitState(ULONG_PTR dwOffset, DWORD dwBitmask, bool bState) {
+#ifdef UE3
+	DWORD stateRet = Read<DWORD>((LPBYTE)dwOffset);
+	return bState ? stateRet | dwBitmask : stateRet & ~dwBitmask;
+#endif
 	BYTE b = Read<BYTE>((LPBYTE)dwOffset);
 	if (dwBitmask == 0xFF01)
 		return bState;
@@ -619,7 +645,10 @@ BYTE SetBitState(ULONG_PTR dwOffset, WORD dwBitmask, bool bState) {
 	}
 	return b;
 }
-bool GetBitState(ULONG_PTR dwOffset, WORD dwBitmask) {
+bool GetBitState(ULONG_PTR dwOffset, DWORD dwBitmask) {
+#ifdef UE3
+	return  Read<DWORD>((LPBYTE)dwOffset) & dwBitmask;
+#endif
 	BYTE b = Read<BYTE>((LPBYTE)dwOffset);
 	if (dwBitmask == 0xFF01)
 		return b;
@@ -672,7 +701,13 @@ std::string GetObjectValue(ULONG_PTR pObj, UPropertyProxy* pProperty, ULONG_PTR 
 	else if (pProperty->IsFloat()) { sprintf_s(szBuf, 124, "%f", Read<float>((LPBYTE)dwOffset)); return szBuf; }
 	else if (pProperty->IsBool()) {
 		lParam = pProperty->GetBitMask(); 
-		sprintf_s(szBuf, 124, "%s", GetBitState(dwOffset, pProperty->GetBitMask()) ? "true" : "false"); 
+
+#ifdef UE3
+		bool bState = Read<DWORD>(dwOffset) & pProperty->GetBitMask();
+#else
+		bool bState = GetBitState(dwOffset, pProperty->GetBitMask());
+#endif
+		sprintf_s(szBuf, 124, "%s", bState ? "true" : "false");
 		return szBuf;
 	}
 
@@ -793,7 +828,7 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 
 		//print size
 		std::string className = c.GetName();
-
+		printf("class: %p / %s\n", c.ptr, className.c_str());
 		OutputDebugStringA(className.c_str());
 		if (!c.HasChildren()) {
 			c = c.GetSuperClass();
@@ -802,8 +837,10 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 		//list properties
 		UPropertyProxy f = c.GetChildren().As<UPropertyProxy>();
 		while (1) {
-			OutputDebugStringA(f.GetName().c_str());
-			OutputDebugStringA("\n");
+			char msg[512];
+			sprintf_s(msg, 124, "%p / %s\n",f.ptr,f.GetName().c_str());
+			OutputDebugStringA(msg);
+			//OutputDebugStringA("\n");
 			if (!f.IsFunction()) {
 				vProperty.push_back(f);
 			}
@@ -822,6 +859,28 @@ std::vector< UPropertyProxy> GetProps(UClassProxy c,DWORD& structSize) {
 	return vProperty;
 }
 
+bool utf8_check_is_valid(const std::string& string)
+{
+    int c,i,ix,n,j;
+    for (i=0, ix=string.length(); i < ix; i++)
+    {
+        c = (unsigned char) string[i];
+        //if (c==0x09 || c==0x0a || c==0x0d || (0x20 <= c && c <= 0x7e) ) n = 0; // is_printable_ascii
+        if (0x00 <= c && c <= 0x7f) n=0; // 0bbbbbbb
+        else if ((c & 0xE0) == 0xC0) n=1; // 110bbbbb
+        else if ( c==0xed && i<(ix-1) && ((unsigned char)string[i+1] & 0xa0)==0xa0) return false; //U+d800 to U+dfff
+        else if ((c & 0xF0) == 0xE0) n=2; // 1110bbbb
+        else if ((c & 0xF8) == 0xF0) n=3; // 11110bbb
+        //else if (($c & 0xFC) == 0xF8) n=4; // 111110bb //byte 5, unnecessary in 4 byte UTF-8
+        //else if (($c & 0xFE) == 0xFC) n=5; // 1111110b //byte 6, unnecessary in 4 byte UTF-8
+        else return false;
+        for (j=0; j<n && i<ix; j++) { // n bytes matching 10bbbbbb follow ?
+            if ((++i == ix) || (( (unsigned char)string[i] & 0xC0) != 0x80))
+                return false;
+        }
+    }
+    return true;
+}
 std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	json j;
 
@@ -834,6 +893,11 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	//sort..
 	//printf("struct size: %X\n", structSize);
 	auto _AddItem = [&](std::string type, ULONG_PTR offset, std::string name, std::string  val, ULONG_PTR lParam = 0) {
+		//printf("%04X Add: %s / %s / %s\n",offset, name.c_str(),type.c_str(),val.c_str());
+		//validate uft-8
+		if (!utf8_check_is_valid(val))
+			val = "NON UTF-8";
+
 		json i;
 		i["type"] = type;
 		i["offset"] = offset;
@@ -841,6 +905,7 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 		i["val"] = val;
 		i["lParam"] = lParam;
 		jInfo[iInfo++] = i;
+		i.dump();
 	};
 
 	std::function<void(std::string structName,UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset)> fnc = [&](std::string structName,UPropertyProxy fStruct, ULONG_PTR ptr, ULONG_PTR offset) {
@@ -978,7 +1043,14 @@ std::string GetInfo(ULONG_PTR ptr, UClassProxy c) {
 	_j["type"] = "info";
 	_j["data"] = j;
 
-	auto ret = _j.dump();
+	std::string ret;
+	try
+	{
+		ret = _j.dump();
+	}
+	catch (json::exception& e) {
+		printf("%i GOT EXCEPTION! %s\n",e.id,e.what());
+	}
 	//OutputDebugStringA(ret.c_str());
 	return ret;
 
@@ -1148,6 +1220,7 @@ std::vector<AActor> CWorld::GetActors() {
 
 	//now add x scanner..
 	//loop all levels...
+	if (fLevels.Find(_this)) return v;
 	TArray<ULONG_PTR> lBuf = Read<TArray<ULONG_PTR>>((LPBYTE)_this + fLevels.Find(_this)); //levels..
 
 	ULONG_PTR* lvls = new ULONG_PTR[lBuf.Count];
@@ -1157,15 +1230,17 @@ std::vector<AActor> CWorld::GetActors() {
 
 		ULONG_PTR pArr = level + UObj_Offsets::dwActorsList;
 		if (getActorsFnc) pArr = getActorsFnc(level);
-		TArray<ULONG_PTR> buf = Read<TArray<ULONG_PTR>>(pArr);
-		ULONG_PTR* ptrs = new ULONG_PTR[buf.Count];
-		ReadTo(buf.Data, ptrs, buf.Count * 8);
-		for (int i = 0; i < buf.Count; i++) {
-			ULONG_PTR ptr = ptrs[i];
-			if (ptr)
-				v.push_back(AActor(ptr));
+		if (pArr) {
+			TArray<ULONG_PTR> buf = Read<TArray<ULONG_PTR>>(pArr);
+			ULONG_PTR* ptrs = new ULONG_PTR[buf.Count];
+			ReadTo(buf.Data, ptrs, buf.Count * 8);
+			for (int i = 0; i < buf.Count; i++) {
+				ULONG_PTR ptr = ptrs[i];
+				if (ptr)
+					v.push_back(AActor(ptr));
+			}
+			delete[] ptrs;
 		}
-		delete[] ptrs;
 	}
 	delete[] lvls;
 	//get level and list actors
@@ -1180,11 +1255,27 @@ std::string GetList() {
 		OutputDebugStringA(msg);
 		OutputDebugStringA(e.GetName());
 		OutputDebugStringA(" --- READ ENGINE NAME!!!\n");
+		std::vector<AActor> actors;
+#ifdef UE3
+		static FieldCache fGamePlayers = FieldCache("GamePlayers");
+		DWORD dwOff = fGamePlayers.Find(e._this);
+		auto pLocal = Read< DWORD64>(Read((DWORD64)e._this + dwOff));
+		actors.insert(actors.begin(), AActor(pLocal));
+
+		static FieldCache fActor = FieldCache("Actor");
+		auto pActor = fActor.UGet(pLocal);
+		actors.insert(actors.begin(), AActor(pActor));
+
+		static FieldCache fPawn = FieldCache("Pawn");
+		auto pPawn = fPawn.UGet(pActor);
+		actors.insert(actors.begin(), AActor(pPawn));
+#else
 		static FieldCache fGameViewport = FieldCache("GameViewport");
 		static FieldCache fWorld = FieldCache("World");
 
 		//now add x scanner..
 		ULONG_PTR ptr1 = fGameViewport.UGet(e._this);
+		ULONG_PTR pWorld = 0;
 		if (ptr1) {
 			if (!fWorld.Find(ptr1)) {
 				OutputDebugStringA("Could not find World property.. bruteforce..\n");
@@ -1195,7 +1286,7 @@ std::string GetList() {
 						//..
 						auto n = pOff.GetClass().GetName();
 						if (n == "World") {
-							ptr1 = pOff.ptr;
+							pWorld = pOff.ptr;
 							OutputDebugStringA("Found by bruteforce..\n");
 							//sprintf_s(szMsg, 1024, "\n %04X WORLD %04X - %s\n", 0, i, n.c_str());
 							//OutputDebugStringA(szMsg);
@@ -1207,14 +1298,16 @@ std::string GetList() {
 				}
 			}
 			else {
-				ptr1 = fWorld.UGet(ptr1);
+				pWorld = fWorld.UGet(ptr1);
 			}
 		}
-		CWorld w = CWorld(ptr1);
-		std::vector<AActor> actors = w.GetActors();
+		if (pWorld) {
+			CWorld w = CWorld(pWorld);
+			actors = w.GetActors();
+			actors.insert(actors.begin(), AActor(w._this));
+		}
+#endif
 		actors.insert(actors.begin(), AActor(e._this));
-		actors.insert(actors.begin(), AActor(w._this));
-
 		DWORD i = 0;
 		for(DWORD g = 0; g < actors.size();g++) {
 			auto a = actors[g];
@@ -1227,6 +1320,9 @@ std::string GetList() {
 			j[i++] = e;
 		}
 
+	}
+	else {
+		printf("no process?\n");
 	}
 	json _j;
 	_j["type"] = "list";
@@ -1854,7 +1950,7 @@ void InitPubGSteam2() {
 	getEncObjFnc = [](ULONG_PTR v4) { //RootComponent..
 		return 0;//TODO
 	};
-	getSuperClassFnc = [](ULONG_PTR _this) {
+	getOuterClassFnc = [](ULONG_PTR _this) {
 		return 0;//TODO
 	};
 	getActorsFnc = [](ULONG_PTR _this) {
@@ -1899,7 +1995,7 @@ void InitPubGLite() {
 		ULONG_PTR v6 = __ROR8__(pVal ^ 0x470898FB6D10C7AC, 0x1C);
 		return (v6 ^ (v6 << 32) ^ 0x5DE5A22A6289A4F);
 	};
-	getSuperClassFnc = [](ULONG_PTR _this) {
+	getOuterClassFnc = [](ULONG_PTR _this) {
 		DWORD64 pVal = Read<DWORD64>((LPBYTE)_this + UObj_Offsets::dwSuperClassOffset2);
 		ULONG_PTR v6 = __ROL8__(pVal ^ 0x94426FF1A564B5E8, 0x13);
 		return (v6 ^ (v6 << 32) ^ 0x72BCED0738B42294);
@@ -1914,27 +2010,317 @@ void InitPubGLite() {
 
 #include "Game.hpp"
 
+HANDLE GetFirstThread()
+{
+	HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (!hSnap || hSnap == INVALID_HANDLE_VALUE)
+		return 0;
+
+	THREADENTRY32 te = { 0 };
+	te.dwSize = sizeof(te);
+	Thread32First(hSnap, &te);
+	auto pid = (DWORD)hProcess;// GetCurrentProcessId();
+	LARGE_INTEGER lowest_creation = {};
+	lowest_creation.QuadPart = MAXLONGLONG;
+	int lowest_tid = 0;
+	do
+	{
+		if (te.th32OwnerProcessID == pid)
+		{
+			FILETIME c = { 0 }, e = { 0 }, k = { 0 }, u = { 0 };
+
+			auto hThread = OpenThread(THREAD_ALL_ACCESS, 0, te.th32ThreadID);
+			if (!hThread || hThread == INVALID_HANDLE_VALUE)
+				continue;
+
+			GetThreadTimes(hThread, &c, &e, &k, &u);
+			LARGE_INTEGER cInt = { 0 };
+			cInt.HighPart = c.dwHighDateTime;
+			cInt.LowPart = c.dwLowDateTime;
+
+			if (cInt.QuadPart < lowest_creation.QuadPart)
+			{
+				lowest_creation.QuadPart = cInt.QuadPart;
+				lowest_tid = te.th32ThreadID;
+			}
+
+			CloseHandle(hThread);
+		}
+	} while (Thread32Next(hSnap, &te));
+
+	CloseHandle(hSnap);
+	return OpenThread(THREAD_ALL_ACCESS, 0, lowest_tid);
+}
+ULONG_PTR FindTls() {
+	static ULONG_PTR pTls = 0;
+	if (!pTls) {
+		//..find 
+		typedef LONG(__stdcall* t_NtQueryInformationThread)(HANDLE ThreadHandle, int ThreadInformationClass, PVOID ThreadInformation, ULONG ThreadInformationLength, PULONG ReturnLength);
+		t_NtQueryInformationThread NtQueryInformationThread = (decltype(NtQueryInformationThread))GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationThread");
+
+		typedef struct _CLIENT_ID {
+			HANDLE UniqueProcess;
+			HANDLE UniqueThread;
+		} CLIENT_ID, * PCLIENT_ID;
+
+		typedef struct _THREAD_BASIC_INFORMATION {
+			LONG ExitStatus;
+			PVOID TebBaseAddress;
+			CLIENT_ID ClientId;
+			ULONG_PTR AffinityMask;
+			LONG Priority;
+			LONG BasePriority;
+		} THREAD_BASIC_INFORMATION, * PTHREAD_BASIC_INFORMATION;
+
+		// get main thread TEB and read +0x58
+		THREAD_BASIC_INFORMATION tbi = { 0 };
+		auto hThread = GetFirstThread();
+		ULONG outlen = 0;
+		auto ret = NtQueryInformationThread(hThread, 0, &tbi, sizeof(tbi), &outlen);
+		if (ret) {
+			//OutputDebugStringA("Bad query!\n");
+			return 0;
+		}
+		//OutputDebugStringA("Got query!\n");
+
+		pTls = Read<uintptr_t>((LPBYTE)tbi.TebBaseAddress + 0x58);
+
+		//char msg[124];
+		//sprintf_s(msg, 124, "ptls: %p / %p\n", tbi.TebBaseAddress, pTls);
+		//OutputDebugStringA(msg);
+
+	}
+	return pTls;
+}
+void InitPaladins() {
+	bool bRealmRoyale = sWndFind == L"Realm Royale (64-bit, DX11)";
+	bool bSmite = sWndFind == L"Smite (64-bit, DX9)";
+	bool bPaladins = sWndFind == L"Paladins (64-bit, DX11)";
+
+	GetBase();
+
+	//find engine and gnames
+	ENGINE_OFFSET =  DoScan("48 8B 0D ?? ?? ?? ?? 48 8B 89 ?? ?? ?? ?? 48 8B 41 60", 3, 7);
+	printf("ENGINE RESULT: %p\n", ENGINE_OFFSET);
+
+
+	//ENGINE_OFFSET = 0x0362FD90;
+	//UObj_Offsets::dwStructOffset = 0xB0;
+	//UObj_Offsets::dwSuperClassOffset2 = 0x78;
+	UObj_Offsets::dwNameIdOffset = 0x48;
+	UObj_Offsets::dwChildOffset = 0x80;//
+	UObj_Offsets::dwNextOffset = 0x60;//
+	//UObj_Offsets::dwInnerOffset = 0x98;//
+	UObj_Offsets::dwOffOffset = 0x7C;
+	/*getClassFnc = [](ULONG_PTR _this) {
+		return Read(_this + 0x50);
+	};*/
+	getOuterClassFnc = [](ULONG_PTR _this) {
+		return Read(_this + 0x78);
+	};
+	UObj_Offsets::dwPropSize = 0x88;
+	UObj_Offsets::dwSizeOffset = 0x68;
+	UObj_Offsets::dwBitmaskOffset = 0x98;
+
+	getNameFnc = [](DWORD id) { //Paladins
+		//00007FF746F367B9 | 48:8D15 B05E1702                  | lea     rdx, qword ptr ds:[0x7FF7490AC670]                                             | 00007FF7490AC670:"d:\\build\\paladins\\3.2\\development\\src\\core\\inc\\AntiCheatArray.h"
+		static char m_name[256];
+		m_name[0] = 0;
+
+		static ULONG_PTR cTls = FindTls();
+
+
+		DWORD64 toRead = Read<DWORD64>(cTls + (Read<DWORD>(GetBase() + 0x4121084) * 8));
+		DWORD toAdd = 8 * ((BYTE)id) + 0x30;
+
+		auto xorKey = Read<ULONG_PTR>((LPBYTE)toRead + toAdd);
+		auto enc = Read<DWORD64>(Read<DWORD64>(GetBase() + 0x361A76C) + id * 8);
+		auto pPtr = (LPBYTE)(enc ^ xorKey);
+
+		ReadTo((LPVOID)&pPtr[0x14], m_name, sizeof(m_name) - 1);
+		return m_name;
+	};
+
+	if (bRealmRoyale) getNameFnc = [](DWORD id) { //RR
+		//00007FF746F367B9 | 48:8D15 B05E1702                  | lea     rdx, qword ptr ds:[0x7FF7490AC670]                                             | 00007FF7490AC670:"d:\\build\\paladins\\3.2\\development\\src\\core\\inc\\AntiCheatArray.h"
+		static char m_name[256];
+		m_name[0] = 0;
+
+		static ULONG_PTR cTls = FindTls();
+
+
+		DWORD64 toRead = Read<DWORD64>(cTls + (Read<DWORD>(GetBase() + 0x38277C4) * 8)); //rsi
+		DWORD toAdd = 8 * (id&0x1ff ) + 0x30;
+
+		auto xorKey = Read<ULONG_PTR>((LPBYTE)toRead + toAdd);
+		auto enc = Read<DWORD64>(Read<DWORD64>(GetBase() + 0x2CEC03C) + id * 8); 
+		auto pPtr = (LPBYTE)(enc ^ xorKey);
+		
+		//sprintf_s(m_name, 256, "%p GETNAMES: %i - %p / %p / %p / [%p ^ %p = %p]\n", Read<DWORD64>(GetBase() + 0x2CEC03C), id, toRead, toAdd, cTls, enc,xorKey,pPtr);
+		//OutputDebugStringA(m_name);
+
+		ReadTo((LPVOID)&pPtr[0x14], m_name, sizeof(m_name) - 1);
+		return m_name;
+	};
+
+	//smite
+	if(bSmite) getNameFnc = [](DWORD id) { //RR
+		//00007FF746F367B9 | 48:8D15 B05E1702                  | lea     rdx, qword ptr ds:[0x7FF7490AC670]                                             | 00007FF7490AC670:"d:\\build\\paladins\\3.2\\development\\src\\core\\inc\\AntiCheatArray.h"
+		static char m_name[256];
+		m_name[0] = 0;
+
+		static ULONG_PTR cTls = FindTls();
+
+
+		DWORD64 toRead = Read<DWORD64>(cTls + (Read<DWORD>(GetBase() + 0x40CD024) * 8)); //rsi
+		DWORD toAdd = 8 * (id & 0x7f) + 0x30;
+
+		auto xorKey = Read<ULONG_PTR>((LPBYTE)toRead + toAdd);
+		auto enc = Read<DWORD64>(Read<DWORD64>(GetBase() + 0x364CC7C) + id * 8);
+		auto pPtr = (LPBYTE)(enc ^ xorKey);
+
+		//sprintf_s(m_name, 256, "%p GETNAMES: %i - %p / %p / %p / [%p ^ %p = %p]\n", Read<DWORD64>(GetBase() + 0x2CEC03C), id, toRead, toAdd, cTls, enc,xorKey,pPtr);
+		//OutputDebugStringA(m_name);
+
+		ReadTo((LPVOID)&pPtr[0x14], m_name, sizeof(m_name) - 1);
+		return m_name;
+	};
+
+	//getNameFnc(0x1A03B);
+
+	extern void BruteStruct();
+	BruteStruct();
+}
+
+void BruteStruct() {
+	//brute plz
+
+	auto e = UObjectProxy(Read<ULONG_PTR>(GetBase() + ENGINE_OFFSET));
+	//verify class
+	for (DWORD i = 0; i < 0x200; i += 8) {
+		UObjectProxy ptr = Read<ULONG_PTR>(e.ptr + i);
+		if (ptr.ptr && e.ptr != ptr.ptr && ptr.GetId() == e.GetId()) {
+			UObj_Offsets::dwClassOffset = i;
+			std::string pName = ptr.GetName();
+			printf("CLASS %04X test %s\n", i, ptr.GetName().c_str());
+			break;
+		}
+
+	}
+
+
+	auto c = e.GetClass().As<UClassProxy>();
+	auto cName = c.GetName();
+	printf("Engine: %s / %s\n", e.GetName(),c.GetName().c_str());
+
+	//todo, find id?
+	//find offset
+	//find child and next
+
+	//verify super
+	for (DWORD i = 0; i < 0x200; i+=8) {
+		UObjectProxy ptr = Read<ULONG_PTR>(c.ptr + i);
+		std::string pName = ptr.ptr ? ptr.GetName() : "";
+		if (ptr.ptr && strstr(pName.c_str(), "GameEngine") && pName != cName) {
+			printf("SUPER CLASS %04X test %s\n", i, ptr.GetName().c_str());
+			UObj_Offsets::dwSuperClassOffset2 = i;
+			break;
+		}
+	}
+
+	UPropertyProxy f;
+	//scan childs
+	//find C_SemiSolidWire
+	UClassProxy scanClass = c;
+	auto fScan = scanClass.GetChildren().As< UPropertyProxy>();
+	while (!f.ptr) {
+		auto fName = fScan.GetName();
+		if (fName == "None") {
+			auto nextClass = scanClass.GetSuperClass();
+			if (nextClass== scanClass) break; //no more classes..
+			scanClass = nextClass;
+			fScan = scanClass.GetChildren().As< UPropertyProxy>();
+		}
+		else {
+			//printf("Child: %s\n", fScan.GetName().c_str());
+			if (fName == "C_SemiSolidWire") {
+				f = fScan;
+			}
+			fScan = fScan.GetNext();
+		}
+	}
+	printf("Found: %p\n", f.ptr);
+	if (f.ptr) {
+		OutputDebugString("FOUND SOLID WIRE!\n");
+		/*if (f.GetOffset() <= 0x30) {
+			UObj_Offsets::dwOffsetffset += 8;
+		}*/
+		auto pInner = f.GetInner();
+		while (pInner.GetName() != "Color") {
+			UObj_Offsets::dwInnerOffset += 8;
+			pInner = f.GetInner();
+		}
+		char msg[124];
+		sprintf_s(msg, 124, "%04X INNER SEARCH! %s / %p / %p \n", UObj_Offsets::dwInnerOffset, pInner.GetName().c_str(), f.ptr, pInner.ptr);
+		OutputDebugStringA(msg);
+		for (int i = 0x180; i >= 0x28; i -= 8) {
+			UObjectProxy ptr = Read<ULONG_PTR>(pInner.ptr + i);
+			if (ptr.ptr && ptr.ptr > 0x10000000000 && ptr.GetId() && ptr.GetId() < 0x100000) {
+				UObjectProxy p = ptr;
+				auto n = p.GetName();
+				if (!n.empty() && (n == "A" || n == "R" || n == "G" || n == "B")) {
+
+					//now look
+					UObj_Offsets::dwStructOffset = i;
+
+					sprintf_s(msg, 124, "FOUND STRUCT %04X ptr: %p / %p\n", i, pInner.ptr);
+					OutputDebugStringA(msg);
+					break;
+					//i -= 8;//skip next..
+					//break;
+				}
+			}
+		}
+	}
+
+	
+	printf("Brute done.\n");
+}
+
 int main() {
 	LuaInit();
 
 	hProcess = NULL;
 	base = 0;
-
+#ifdef UE3
+	HWND hWnd = FindWindowA("LaunchUnrealUWindowsClient", NULL);
+#else
 	HWND hWnd = FindWindowA("UnrealWindow", NULL);
-	char cbWndName[MAX_PATH];
-	GetWindowTextA(hWnd, cbWndName, MAX_PATH);
-	printf("Found game: %s\n", cbWndName);
+#endif
+	wchar_t cbWndName[MAX_PATH];
+	GetWindowTextW(hWnd, cbWndName, MAX_PATH);
+	wprintf(L"Found game: %s\n", cbWndName);
+
+	sWndFind = cbWndName;
 
 	//InitLastOasis();
 	//InitBorderlands3();
-	if(!strcmp(cbWndName,"Deadside  "))
+#ifdef UE3
+	InitPaladins();
+
+#else
+	if (!wcscmp(cbWndName, L"Deadside  "))
 		InitDeadSide();
-	else
-		InitPubGSteam();
+	if (!wcscmp(cbWndName, L"VALORANT  "))
+		InitValorant();
+	//else InitPubGSteam();
 	//InitPubGLite();
+#endif
+	BruteStruct();
 
 	GetBase();
 	GScan();
+	printf(GetList().c_str());
 	//VerifyOffsets();
 
 	std::thread t = StartWebServer();

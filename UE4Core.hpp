@@ -208,6 +208,7 @@ static_assert(offsetof(UBoolProperty, Offset) == 0x44);
 static_assert(offsetof(UBoolProperty, Offset) == 0x44);
 static_assert(offsetof(UBoolProperty, Next) == 0x28);
 namespace UObj_Offsets {
+	DWORD dwClassOffset = 0x10;
 	DWORD dwOffOffset = 0x44;
 	DWORD dwActorsList = 0xA0;
 	DWORD dwSuperClassOffset2 = offsetof(UStruct, SuperField);

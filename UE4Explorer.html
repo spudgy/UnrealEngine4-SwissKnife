@@ -358,7 +358,9 @@ Vue.component('demo-grid', {
               console.log('get info..');
               //restart breadcrumbs
               document.demo2.bcList = [];
-          } else if(entry.lParam > 0 && (entry.type == 'ObjectProperty' || entry.type == 'ArrayProperty')) {
+          } else if(entry.lParam > 0 && (entry.type == 'ObjectProperty' || entry.type == 'ArrayProperty' ||
+                                         entry.type == 'ComponentProperty' //ue3 support
+                                        )) {
               //this.$parent.goPtr = entry.lParam;
                 connection.send('get_info '+entry.lParam) 
               //..
@@ -383,6 +385,8 @@ Vue.component('demo-grid', {
         
         if(key == 'addr' || key == 'offset') return ret.toString(16).toUpperCase();
         if(ret.length>40) return ret.slice(0,40)+'...';
+        
+        if(key == 'val' && entry.type == 'BoolProperty') ret += ' : '+entry.lParam.toString(16).toUpperCase();//entry.lParam
         return ret;
     },
     sortBy: function (key) {
