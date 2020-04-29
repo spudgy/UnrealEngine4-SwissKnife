@@ -396,24 +396,24 @@ void InitValorant() {
 	};*/
 	getNameFnc = [](DWORD id) {
 
-		FNameEntry entry;
-		static char pBuff[1024];
+		DWORD chunkOffset = ((int)(id) >> 16); // Block
+		WORD nameOffset = id;
 
-		// 48 8B 05 ? ? ? ? 48 85 C0 75 64
-		LPBYTE pGNames = Read<LPBYTE>((LPBYTE)GetBase() + 0x5CB1728); //look for "RootComponent" string
-		if (id > Read<DWORD>(pGNames + 0x800)) return "";
-		auto gengRoot = Read<DWORD64>(pGNames + 8 * (id / 0x4000));
-		auto pGenPtr = Read<DWORD64>(gengRoot + 8 * (id % 0x4000));
+		//if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
 
-		FNameEntry genPtr;
-		ReadTo((LPVOID)(pGenPtr), &genPtr, (int)sizeof(FNameEntry));
-		//dec_prop(genPtr, pBuff);
-
-		rito_decrypt_name((u8*)pBuff, genPtr.seed, genPtr.data, genPtr.len);
-		pBuff[genPtr.len] = 0;
-
-
-		return (const char*)pBuff;
+		//printf("%i chunk %i / %i \n",key, chunkOffset,nameOffset);
+		// The first chunk/shard starts at 0x10, so even if chunkOffset is zero, we will start there.
+		auto namePoolChunk = Read(fNamePool + ((chunkOffset + 2) * 8));
+		auto entryOffset = namePoolChunk + (DWORD)(4 * nameOffset);
+		WORD nLen = Read<WORD>(entryOffset + 4);
+		WORD nameLength = nLen / 2;// Read<WORD>(entryOffset + 4) >> 16;
+		//printf("len: %i / %i / %p / %p - ", nLen >> 1,nameLength, entryOffset, namePoolChunk);
+		if (nameLength > 256)nameLength = 255;
+		static char cBuf[256];
+		ReadTo((LPBYTE)entryOffset + 6, cBuf, nameLength);
+		cBuf[nameLength] = 0;
+		//printf("ret %s\n", cBuf);
+		return cBuf;
 	};
 
 	sWndFind = L"VALORANT  ";
@@ -428,9 +428,10 @@ void InitValorant() {
 
 	UObj_Offsets::dwBitmaskOffset = 0x82;
 
-	ENGINE_OFFSET = 0x5DD6130;// 0x5DCC670; //48 8B 0D ?? ?? ?? ?? 48 85 C9 74 1E 48 8B 01 FF 90
+	ENGINE_OFFSET = 0x61E9AF0;// 0x5DCC670; //48 8B 0D ?? ?? ?? ?? 48 85 C9 74 1E 48 8B 01 FF 90
 	extern DWORD64 gObj;
 	gObj = GetBase() + 0x5CAC308;
+	fNamePool =  GetBase() + 0x608DF80;
 	//0x5CAC308 //GOBJ
 	GetBase();
 	GScan();

@@ -1,7 +1,7 @@
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #include "stdafx.h"
 
-#define UE3
+//#define UE3
 
 #include "client_ws.hpp"
 #include "server_ws.hpp"
@@ -198,11 +198,11 @@ const char* GetNameFromFName(int key)
 
 	//if (chunkOffset > Read<DWORD>(fNamePool + 8)) return "BAD";//bad block?
 
-	//printf("%i chunk %i / %i \n",key, chunkOffset,nameOffset);
+	printf("%i chunk %i / %i \n",key, chunkOffset,nameOffset);
 	// The first chunk/shard starts at 0x10, so even if chunkOffset is zero, we will start there.
 	auto namePoolChunk = Read(fNamePool + ((chunkOffset + 2) * 8));
 	auto entryOffset = namePoolChunk + (DWORD)(2 * nameOffset);
-	WORD nameLength = Read<WORD>(entryOffset) >> 6;
+	WORD nameLength = Read<WORD>(entryOffset) >> 16;
 	//printf("len: %i / %i / %p / %p - ", nLen,nameLength, entryOffset, namePoolChunk);
 	if (nameLength > 256)nameLength = 255;
 	static char cBuf[256];
@@ -221,8 +221,8 @@ public:
 		return nameMap[id].c_str();
 	}
 	static const char* GetNameS(int id) {
-		if (fNamePool) return GetNameFromFName(id);
 		if (getNameFnc) return getNameFnc(id);
+		if (fNamePool) return GetNameFromFName(id);
 		static char m_name[124];
 		char msg[124];
 		auto ptr = GNames;
@@ -1255,6 +1255,9 @@ std::string GetList() {
 		OutputDebugStringA(msg);
 		OutputDebugStringA(e.GetName());
 		OutputDebugStringA(" --- READ ENGINE NAME!!!\n");
+		//auto n = UObjectProxy(e._this).GetClass().GetName();
+		//printf("name: %s\n", n.c_str());
+		//return "";//
 		std::vector<AActor> actors;
 #ifdef UE3
 		static FieldCache fGamePlayers = FieldCache("GamePlayers");
@@ -2134,11 +2137,11 @@ void InitPaladins() {
 		static ULONG_PTR cTls = FindTls();
 
 
-		DWORD64 toRead = Read<DWORD64>(cTls + (Read<DWORD>(GetBase() + 0x4121084) * 8));
-		DWORD toAdd = 8 * ((BYTE)id) + 0x30;
+		DWORD64 toRead = Read<DWORD64>(cTls + (Read<DWORD>(GetBase() + 0x413D2D4) * 8));
+		DWORD toAdd = 8 * (id&0x1FF) + 0x30;
 
 		auto xorKey = Read<ULONG_PTR>((LPBYTE)toRead + toAdd);
-		auto enc = Read<DWORD64>(Read<DWORD64>(GetBase() + 0x361A76C) + id * 8);
+		auto enc = Read<DWORD64>(Read<DWORD64>(GetBase() + 0x363694C) + id * 8);
 		auto pPtr = (LPBYTE)(enc ^ xorKey);
 
 		ReadTo((LPVOID)&pPtr[0x14], m_name, sizeof(m_name) - 1);
